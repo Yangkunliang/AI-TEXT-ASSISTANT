@@ -185,10 +185,10 @@
 </head>
 <body>
   <div class="title">AI 文本助手</div>
-  <textarea id="inputText" placeholder="输入文字，或点击【总结当前网页】自动读取内容…"></textarea>
+  <textarea id="inputText" placeholder="输入文字，或点击【总结当前网页】自动读取内容…" rows="3"></textarea>
 
   <div class="btn-group">
-    <button id="summaryPage">总结当前网页</button>
+    <button id="summaryPage">网页总结</button>
     <button id="polish">文案润色</button>
     <button id="translate">翻译成中文</button>
   </div>
@@ -196,10 +196,9 @@
   <div class="btn-group">
     <button id="scrollScreenshot">截图</button>
     <button id="scrollCapture">滚动截图</button>
-    <button id="extractText">提取文字</button>
+    <!-- <button id="extractText">提取文字</button> -->
     <button id="summaryScreenshot">总结页面</button>
   </div>
-  <div class="tip">滚动截图：选择区域后，滚动页面时实时截图预览，按ESC完成截图</div>
 
   <div class="btn-line">
     <button id="copyResult">复制结果</button>
@@ -208,14 +207,12 @@
   </div>
 
   <div id="result">结果将显示在这里…</div>
-  <div class="tip">支持 DeepSeek / OpenAI 接口 | 滚动截图：选择区域后实时滚动截图，右侧预览实时更新</div>
+  <div class="tip">支持 DeepSeek / OpenAI 接口，有需求或疑问扫码联系我</div>
 
   <!-- 联系部分 -->
   <div class="contact-section">
-    <div class="contact-title">有需求联系我</div>
     <div class="qrcode">
       <img id="qrcodeImage" src="icons/contacts.jpg" alt="微信二维码">
-      <p>扫码添加微信</p>
     </div>
   </div>
 
