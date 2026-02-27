@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时滚动截图测试页面</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 200vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #2d8cf0;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border-left: 4px solid #2d8cf0;
+            background: #f8fbff;
+            border-radius: 0 8px 8px 0;
+        }
+        .section h2 {
+            color: #1b78d8;
+            margin-top: 0;
+        }
+        .image-placeholder {
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(45deg, #f0f0f0 25%, transparent 25%), 
+                        linear-gradient(-45deg, #f0f0f0 25%, transparent 25%), 
+                        linear-gradient(45deg, transparent 75%, #f0f0f0 75%), 
+                        linear-gradient(-45deg, transparent 75%, #f0f0f0 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 14px;
+            margin: 15px 0;
+            border-radius: 8px;
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+        }
+        .feature-list li:before {
+            content: "✅";
+            margin-right: 10px;
+            font-size: 16px;
+        }
+        .scroll-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #2d8cf0;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(45, 140, 240, 0.3);
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="scroll-indicator">向下滚动测试实时截图</div>
+    
+    <div class="container">
+        <h1>📸 实时滚动截图功能测试</h1>
+        
+        <div class="section">
+            <h2>🚀 核心功能特点</h2>
+            <ul class="feature-list">
+                <li>实时滚动截图，无需等待</li>
+                <li>右侧实时预览，所见即所得</li>
+                <li>飞书式操作体验</li>
+                <li>自动拼接长截图</li>
+                <li>智能黑屏检测与重试</li>
+                <li>扩展UI元素自动过滤</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2>🎨 测试内容区域 1</h2>
+            <p>这是第一个测试区域，包含一些文本内容用于验证截图效果。</p>
+            <div class="image-placeholder">图片占位符区域 1</div>
+            <p>在实际使用中，这里可能是产品图片、图表或其他视觉内容。</p>
+        </div>
+        
+        <div class="section">
+            <h2>📊 测试内容区域 2</h2>
+            <p>第二个测试区域，验证滚动过程中的截图连续性。</p>
+            <div class="image-placeholder">图片占位符区域 2</div>
+            <p>滚动截图应该能够准确捕获每个区域的内容。</p>
+        </div>
+        
+        <div class="section">
+            <h2>📱 测试内容区域 3</h2>
+            <p>第三个测试区域，测试长页面的完整截图能力。</p>
+            <div class="image-placeholder">图片占位符区域 3</div>
+            <p>实时预览功能应该能够显示完整的截图进度。</p>
+        </div>
+        
+        <div class="section">
+            <h2>🎯 测试内容区域 4</h2>
+            <p>第四个测试区域，验证截图的准确性和完整性。</p>
+            <div class="image-placeholder">图片占位符区域 4</div>
+            <p>最终生成的长截图应该包含所有滚动过的区域。</p>
+        </div>
+        
+        <div class="section">
+            <h2>🏁 测试结束区域</h2>
+            <p>这是测试页面的底部区域，完成滚动后应该按ESC键结束截图。</p>
+            <div class="image-placeholder">最终图片占位符</div>
+            <p>实时滚动截图功能测试完成！</p>
+        </div>
+    </div>
+    
+    <script>
+        // 滚动位置指示器
+        let scrollIndicator = document.querySelector('.scroll-indicator');
+        let lastScrollY = 0;
+        
+        window.addEventListener('scroll', () => {
+            const scrollY = window.scrollY;
+            const maxScroll = document.body.scrollHeight - window.innerHeight;
+            const scrollPercent = Math.round((scrollY / maxScroll) * 100);
+            
+            scrollIndicator.textContent = `滚动: ${scrollPercent}%`;
+            
+            // 颜色变化效果
+            const hue = 200 + (scrollPercent * 1.6);
+            scrollIndicator.style.background = `hsl(${hue}, 70%, 50%)`;
+            
+            lastScrollY = scrollY;
+        });
+        
+        // 模拟延迟加载内容
+        setTimeout(() => {
+            const newSection = document.createElement('div');
+            newSection.className = 'section';
+            newSection.innerHTML = `
+                <h2>🕒 延迟加载测试区域</h2>
+                <p>这是动态加载的内容，测试实时截图的触发时机。</p>
+                <div class="image-placeholder">动态加载图片</div>
+                <p>实时滚动截图应该能够捕获这类动态内容。</p>
+            `;
+            document.querySelector('.container').appendChild(newSection);
+        }, 2000);
+    </script>
+</body>
+</html>

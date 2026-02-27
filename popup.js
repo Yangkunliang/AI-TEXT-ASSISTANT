@@ -393,413 +393,322 @@ $("scrollCapture").onclick = async () => {
           }
         };
         
-        // 确认截图 - 飞书式滚动截图
+        // 确认截图 - 实时滚动截图（飞书式）
         confirmBtn.onclick = async () => {
           if (!selectedRect || selectedRect.width < 10 || selectedRect.height < 10) return;
           
           // 禁用按钮
           confirmBtn.disabled = true;
-          confirmBtn.textContent = '准备截图...';
+          confirmBtn.textContent = '准备实时截图...';
           cancelBtn.disabled = true;
-          tipText.textContent = '请手动滚动到您想要的截止位置，然后按ESC键完成截图';
+          tipText.textContent = '开始实时滚动截图，请向下滚动页面...';
           
-          // 显示提示
-          const hintDiv = document.createElement('div');
-          hintDiv.id = 'scroll-hint';
-          hintDiv.style.cssText = `
+          // 显示实时预览区域
+          const previewContainer = document.createElement('div');
+          previewContainer.id = 'realtime-preview';
+          previewContainer.style.cssText = `
             position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            top: 60px;
+            right: 20px;
+            width: 300px;
+            max-height: 80vh;
             background: white;
-            padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
             z-index: 1000000001;
-            text-align: center;
+            overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           `;
           
-          hintDiv.innerHTML = `
-            <div style="margin-bottom: 15px; font-weight: bold; color: #2d8cf0;">📝 操作说明</div>
-            <div style="margin-bottom: 10px;">1. 手动向下滚动页面到您想要的截止位置</div>
-            <div style="margin-bottom: 10px;">2. 按 <kbd style="padding: 2px 6px; background: #f5f5f5; border-radius: 3px; border: 1px solid #ddd;">ESC</kbd> 键完成截图</div>
-            <div style="margin-top: 15px; font-size: 12px; color: #999;">或点击下方按钮结束截图</div>
-            <button id="finishBtn" style="
-              margin-top: 10px;
-              padding: 6px 12px;
-              background: #2d8cf0;
-              color: white;
-              border: none;
-              border-radius: 4px;
-              cursor: pointer;
-              font-size: 12px;
-            ">结束截图</button>
+          previewContainer.innerHTML = `
+            <div style="padding: 12px; background: #2d8cf0; color: white; font-weight: 500; font-size: 14px;">
+              📸 实时截图预览
+            </div>
+            <div id="preview-content" style="height: 400px; overflow-y: auto; background: #f5f5f5;">
+              <div id="preview-canvas-container" style="position: relative; width: 100%; min-height: 200px; display: flex; align-items: center; justify-content: center;">
+                <div style="color: #999; text-align: center;">
+                  <div>🔄 等待开始滚动...</div>
+                  <div style="font-size: 12px; margin-top: 8px;">请向下滚动页面开始截图</div>
+                </div>
+              </div>
+            </div>
+            <div style="padding: 10px; border-top: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+              <div id="preview-status" style="font-size: 12px; color: #666;">准备就绪</div>
+              <button id="finishRealtimeBtn" style="
+                padding: 6px 12px;
+                background: #2d8cf0;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+                font-weight: 500;
+              ">完成截图</button>
+            </div>
           `;
-          document.body.appendChild(hintDiv);
           
-          // 保存初始滚动位置
-          const originalScrollY = window.scrollY;
-          const originalScrollX = window.scrollX;
+          document.body.appendChild(previewContainer);
           
-          // 存储滚动过程中的截图片段
-          const scrollShots = [];
+          // 实时截图状态管理
+          const realtimeState = {
+            isCapturing: false,
+            capturedSections: [],
+            lastScrollY: window.scrollY,
+            scrollThreshold: 100, // 滚动阈值
+            previewCanvas: null,
+            previewCtx: null,
+            selectedRect: selectedRect
+          };
           
-          // 获取页面总高度
-          const pageHeight = Math.max(
-            document.body.scrollHeight,
-            document.body.offsetHeight,
-            document.documentElement.clientHeight,
-            document.documentElement.scrollHeight,
-            document.documentElement.offsetHeight
-          );
+          // 初始化预览画布
+          const previewCanvasContainer = document.getElementById('preview-canvas-container');
+          const previewCanvas = document.createElement('canvas');
+          previewCanvas.style.cssText = 'width: 100%; display: none;';
+          previewCanvasContainer.appendChild(previewCanvas);
+          realtimeState.previewCanvas = previewCanvas;
+          realtimeState.previewCtx = previewCanvas.getContext('2d');
           
-          const pageWidth = Math.max(
-            document.body.scrollWidth,
-            document.body.offsetWidth,
-            document.documentElement.clientWidth,
-            document.documentElement.scrollWidth,
-            document.documentElement.offsetWidth
-          );
-          
-          // 监听滚动事件，收集滚动路径
-          let lastScrollTop = window.scrollY;
-          let scrollPositions = [{ y: 0, height: window.innerHeight }]; // 从顶部开始
-          
-          const scrollHandler = () => {
-            const currentScroll = window.scrollY;
-            if (Math.abs(currentScroll - lastScrollTop) > 50) { // 防抖动
-              scrollPositions.push({ y: currentScroll, height: window.innerHeight });
-              lastScrollTop = currentScroll;
+          // 更新预览状态
+          const updatePreviewStatus = (message) => {
+            const statusEl = document.getElementById('preview-status');
+            if (statusEl) {
+              statusEl.textContent = message;
             }
           };
           
-          window.addEventListener('scroll', scrollHandler);
+          // 实时截图函数
+          const captureVisibleArea = async () => {
+            if (realtimeState.isCapturing) return;
+            
+            realtimeState.isCapturing = true;
+            updatePreviewStatus('正在截图...');
+            
+            try {
+              // 获取当前视口信息
+              const currentScrollY = window.scrollY;
+              const viewportHeight = window.innerHeight;
+              const pageWidth = Math.max(
+                document.body.scrollWidth,
+                document.body.offsetWidth,
+                document.documentElement.clientWidth,
+                document.documentElement.scrollWidth,
+                document.documentElement.offsetWidth
+              );
+              
+              // 触发懒加载
+              const triggerLazyLoad = () => {
+                const event = new CustomEvent('scroll', { bubbles: true });
+                window.dispatchEvent(event);
+                const observerEvent = new CustomEvent('scroll', { bubbles: true, detail: { force: true } });
+                document.dispatchEvent(observerEvent);
+              };
+              
+              triggerLazyLoad();
+              await new Promise(r => setTimeout(r, 500));
+              
+              // 实时截图当前视口
+              const canvas = await html2canvas(document.body, {
+                useCORS: true,
+                allowTaint: true,
+                logging: false,
+                scale: 0.5, // 降低分辨率提高性能
+                width: pageWidth,
+                height: viewportHeight,
+                x: 0,
+                y: currentScrollY,
+                foreignObjectRendering: false,
+                removeContainer: true,
+                backgroundColor: getComputedStyle(document.body).backgroundColor || '#ffffff',
+                imageTimeout: 5000,
+                ignoreElements: (element) => {
+                  const tagName = element.tagName;
+                  const className = element.className || '';
+                  const id = element.id || '';
+                  
+                  return tagName === 'SCRIPT' || 
+                         tagName === 'NOSCRIPT' ||
+                         tagName === 'IFRAME' ||
+                         id.includes('scroll-') ||
+                         className.includes('scroll-') ||
+                         className.includes('screenshot') ||
+                         className.includes('control-panel') ||
+                         className.includes('modal') ||
+                         className.includes('toast') ||
+                         className.includes('hint') ||
+                         className.includes('extension') ||
+                         className.includes('plugin') ||
+                         className.includes('preview');
+                },
+                onclone: (clonedDoc) => {
+                  // 隐藏所有扩展UI元素
+                  const selectors = [
+                    '[id*="scroll-"]', '[class*="scroll-"]',
+                    '[id*="screenshot"]', '[class*="screenshot"]',
+                    '[class*="control"]', '[class*="panel"]',
+                    '[class*="modal"]', '[class*="toast"]', '[class*="hint"]',
+                    '[class*="extension"]', '[class*="plugin"]',
+                    '[class*="preview"]'
+                  ];
+                  
+                  selectors.forEach(selector => {
+                    const elementsToHide = clonedDoc.querySelectorAll(selector);
+                    elementsToHide.forEach(el => {
+                      el.style.display = 'none';
+                      el.style.visibility = 'hidden';
+                      el.style.opacity = '0';
+                    });
+                  });
+                  
+                  const clonedBody = clonedDoc.body;
+                  if (clonedBody) {
+                    clonedBody.style.backgroundColor = getComputedStyle(document.body).backgroundColor || '#ffffff';
+                    
+                    const allElements = clonedBody.querySelectorAll('*:not([id*="scroll"]):not([class*="scroll"]):not([class*="extension"]):not([class*="plugin"]):not([class*="preview"])');
+                    allElements.forEach(el => {
+                      const computedStyle = getComputedStyle(el);
+                      if (computedStyle.display === 'none') {
+                        el.style.display = 'block';
+                      }
+                      if (computedStyle.visibility === 'hidden') {
+                        el.style.visibility = 'visible';
+                      }
+                      if (computedStyle.opacity === '0') {
+                        el.style.opacity = '1';
+                      }
+                    });
+                  }
+                }
+              });
+              
+              // 存储截图数据
+              const sectionData = {
+                canvas: canvas,
+                scrollY: currentScrollY,
+                height: viewportHeight,
+                timestamp: Date.now()
+              };
+              
+              realtimeState.capturedSections.push(sectionData);
+              
+              // 更新预览
+              updatePreview(sectionData);
+              updatePreviewStatus(`已截图 ${realtimeState.capturedSections.length} 个区域`);
+              
+            } catch (err) {
+              console.error('实时截图失败:', err);
+              updatePreviewStatus('截图失败，请重试');
+            } finally {
+              realtimeState.isCapturing = false;
+            }
+          };
           
-          // ESC键完成截图
+          // 更新预览显示
+          const updatePreview = (sectionData) => {
+            const { canvas, scrollY } = sectionData;
+            
+            // 显示预览画布
+            const placeholder = previewCanvasContainer.querySelector('div');
+            if (placeholder) {
+              placeholder.style.display = 'none';
+            }
+            previewCanvas.style.display = 'block';
+            
+            // 计算预览尺寸
+            const previewWidth = 280; // 预览容器宽度
+            const scale = previewWidth / canvas.width;
+            const previewHeight = canvas.height * scale;
+            
+            // 设置预览画布尺寸
+            if (previewCanvas.width < previewWidth || previewCanvas.height < (previewHeight * realtimeState.capturedSections.length)) {
+              previewCanvas.width = previewWidth;
+              previewCanvas.height = previewHeight * realtimeState.capturedSections.length;
+            }
+            
+            // 绘制当前截图到预览
+            const yPos = (realtimeState.capturedSections.length - 1) * previewHeight;
+            realtimeState.previewCtx.drawImage(canvas, 0, yPos, previewWidth, previewHeight);
+          };
+          
+          // 滚动事件监听器
+          const scrollHandler = () => {
+            const currentScrollY = window.scrollY;
+            const scrollDiff = Math.abs(currentScrollY - realtimeState.lastScrollY);
+            
+            if (scrollDiff > realtimeState.scrollThreshold) {
+              realtimeState.lastScrollY = currentScrollY;
+              captureVisibleArea();
+            }
+          };
+          
+          // ESC键监听
           const keyHandler = (e) => {
             if (e.key === 'Escape') {
-              finishScrollCapture();
+              finishRealtimeCapture();
             }
           };
           
-          document.addEventListener('keydown', keyHandler);
-          
-          // 完成截图的函数
-          const finishScrollCapture = async () => {
+          // 完成实时截图
+          const finishRealtimeCapture = async () => {
             // 移除事件监听器
             window.removeEventListener('scroll', scrollHandler);
             document.removeEventListener('keydown', keyHandler);
             
             // 移除UI元素
-            if (hintDiv.parentNode) hintDiv.parentNode.removeChild(hintDiv);
+            if (previewContainer.parentNode) {
+              previewContainer.parentNode.removeChild(previewContainer);
+            }
             
-            tipText.textContent = '正在生成长截图，请稍候...';
+            tipText.textContent = '正在生成最终长截图...';
             
             try {
-              // 获取最终滚动位置
-              const finalScrollY = window.scrollY;
-              
-              // 滚动到顶部，逐屏截图
-              window.scrollTo(0, 0);
-              
-              // 触发所有懒加载内容
-              const triggerLazyLoad = () => {
-                const event = new CustomEvent('scroll', { bubbles: true });
-                window.dispatchEvent(event);
-                
-                const observerEvent = new CustomEvent('scroll', { 
-                  bubbles: true, 
-                  detail: { force: true } 
-                });
-                document.dispatchEvent(observerEvent);
-              };
-              
-              const viewportHeight = window.innerHeight;
-              const scrollSteps = Math.ceil(Math.max(finalScrollY, pageHeight) / viewportHeight);
-              const screenshots = [];
-              
-              for (let i = 0; i < scrollSteps; i++) {
-                const scrollY = i * viewportHeight;
-                window.scrollTo(0, scrollY);
-                
-                triggerLazyLoad();
-                
-                // 等待页面渲染
-                await new Promise(r => setTimeout(r, 800));
-                
-                const images = Array.from(document.images);
-                const imagePromises = images
-                  .filter(img => !img.complete)
-                  .map(img => new Promise(resolve => {
-                    const timeout = setTimeout(resolve, 3000);
-                    img.onload = () => {
-                      clearTimeout(timeout);
-                      resolve();
-                    };
-                    img.onerror = () => {
-                      clearTimeout(timeout);
-                      resolve();
-                    };
-                  }));
-                
-                if (imagePromises.length > 0) {
-                  await Promise.all(imagePromises);
-                }
-                
-                if (document.fonts) {
-                  try {
-                    await document.fonts.ready;
-                  } catch (e) {
-                    console.warn('字体加载失败:', e);
-                  }
-                }
-                
-                // 使用更稳定的html2canvas配置
-                const canvas = await html2canvas(document.body, {
-                  useCORS: true,
-                  allowTaint: true,
-                  logging: false,
-                  scale: 1,
-                  width: pageWidth,
-                  height: Math.min(viewportHeight, pageHeight - scrollY),
-                  x: 0,
-                  y: scrollY,
-                  foreignObjectRendering: false,
-                  removeContainer: true,
-                  backgroundColor: getComputedStyle(document.body).backgroundColor || '#ffffff',
-                  imageTimeout: 15000,
-                  ignoreElements: (element) => {
-                    // 忽略扩展注入的UI元素
-                    const tagName = element.tagName;
-                    const className = element.className || '';
-                    const id = element.id || '';
-                    
-                    return tagName === 'SCRIPT' || 
-                           tagName === 'NOSCRIPT' ||
-                           tagName === 'IFRAME' ||
-                           id.includes('scroll-') ||
-                           className.includes('scroll-') ||
-                           className.includes('screenshot') ||
-                           className.includes('control-panel') ||
-                           className.includes('modal') ||
-                           className.includes('toast') ||
-                           className.includes('hint') ||
-                           className.includes('extension') ||
-                           className.includes('plugin');
-                  },
-                  onclone: (clonedDoc) => {
-                    // 隐藏扩展注入的UI元素
-                    const selectors = [
-                      '[id*="scroll-"]', '[class*="scroll-"]',
-                      '[id*="screenshot"]', '[class*="screenshot"]',
-                      '[class*="control"]', '[class*="panel"]',
-                      '[class*="modal"]', '[class*="toast"]', '[class*="hint"]',
-                      '[class*="extension"]', '[class*="plugin"]'
-                    ];
-                    
-                    selectors.forEach(selector => {
-                      const elementsToHide = clonedDoc.querySelectorAll(selector);
-                      elementsToHide.forEach(el => {
-                        el.style.display = 'none';
-                        el.style.visibility = 'hidden';
-                        el.style.opacity = '0';
-                      });
-                    });
-                    
-                    const clonedBody = clonedDoc.body;
-                    if (clonedBody) {
-                      clonedBody.style.backgroundColor = getComputedStyle(document.body).backgroundColor || '#ffffff';
-                      
-                      // 确保所有内容可见
-                      const allElements = clonedBody.querySelectorAll('*:not([id*="scroll"]):not([class*="scroll"]):not([class*="extension"]):not([class*="plugin"])');
-                      allElements.forEach(el => {
-                        const computedStyle = getComputedStyle(el);
-                        if (computedStyle.display === 'none') {
-                          el.style.display = 'block';
-                        }
-                        if (computedStyle.visibility === 'hidden') {
-                          el.style.visibility = 'visible';
-                        }
-                        if (computedStyle.opacity === '0') {
-                          el.style.opacity = '1';
-                        }
-                      });
-                      
-                      // 处理图片
-                      const clonedImages = clonedBody.querySelectorAll('img:not([id*="scroll"]):not([class*="scroll"])');
-                      clonedImages.forEach(img => {
-                        if (img.src) {
-                          const originalImg = document.querySelector(`img[src="${img.src}"]:not([id*="scroll"]):not([class*="scroll"])`);
-                          if (originalImg && originalImg.complete) {
-                            img.src = originalImg.src;
-                          }
-                        }
-                      });
-                    }
-                  }
-                });
-                
-                // 检查canvas内容是否为黑屏
-                const ctxCheck = canvas.getContext('2d');
-                const imageData = ctxCheck.getImageData(0, 0, canvas.width, canvas.height);
-                let blackPixels = 0;
-                const totalPixels = imageData.data.length / 4;
-                
-                // 统计黑色像素数量
-                for (let i = 0; i < imageData.data.length; i += 4) {
-                  const r = imageData.data[i];
-                  const g = imageData.data[i + 1];
-                  const b = imageData.data[i + 2];
-                  
-                  // 如果RGB值都很低，则认为是黑色像素
-                  if (r < 10 && g < 10 && b < 10) {
-                    blackPixels++;
-                  }
-                }
-                
-                const blackRatio = blackPixels / totalPixels;
-                
-                // 如果黑色像素超过80%，尝试重新截图
-                if (blackRatio > 0.8) {
-                  console.warn(`检测到黑屏(${Math.round(blackRatio * 100)}%)，尝试重新截图第${i + 1}屏...`);
-                  
-                  // 等待更多时间再尝试
-                  await new Promise(r => setTimeout(r, 1000));
-                  
-                  // 重新截图
-                  const retryCanvas = await html2canvas(document.body, {
-                    useCORS: true,
-                    allowTaint: true,
-                    logging: false,
-                    scale: 1,
-                    width: pageWidth,
-                    height: Math.min(viewportHeight, pageHeight - scrollY),
-                    x: 0,
-                    y: scrollY,
-                    foreignObjectRendering: true, // 尝试启用foreignObjectRendering
-                    removeContainer: true,
-                    backgroundColor: getComputedStyle(document.body).backgroundColor || '#ffffff',
-                    imageTimeout: 15000,
-                    ignoreElements: (element) => {
-                      const tagName = element.tagName;
-                      const className = element.className || '';
-                      const id = element.id || '';
-                      
-                      return tagName === 'SCRIPT' || 
-                             tagName === 'NOSCRIPT' ||
-                             tagName === 'IFRAME' ||
-                             id.includes('scroll-') ||
-                             className.includes('scroll-') ||
-                             className.includes('screenshot') ||
-                             className.includes('control-panel') ||
-                             className.includes('modal') ||
-                             className.includes('toast') ||
-                             className.includes('hint') ||
-                             className.includes('extension') ||
-                             className.includes('plugin');
-                    },
-                    onclone: (clonedDoc) => {
-                      const selectors = [
-                        '[id*="scroll-"]', '[class*="scroll-"]',
-                        '[id*="screenshot"]', '[class*="screenshot"]',
-                        '[class*="control"]', '[class*="panel"]',
-                        '[class*="modal"]', '[class*="toast"]', '[class*="hint"]',
-                        '[class*="extension"]', '[class*="plugin"]'
-                      ];
-                      
-                      selectors.forEach(selector => {
-                        const elementsToHide = clonedDoc.querySelectorAll(selector);
-                        elementsToHide.forEach(el => {
-                          el.style.display = 'none';
-                          el.style.visibility = 'hidden';
-                          el.style.opacity = '0';
-                        });
-                      });
-                      
-                      const clonedBody = clonedDoc.body;
-                      if (clonedBody) {
-                        clonedBody.style.backgroundColor = getComputedStyle(document.body).backgroundColor || '#ffffff';
-                        
-                        const allElements = clonedBody.querySelectorAll('*:not([id*="scroll"]):not([class*="scroll"]):not([class*="extension"]):not([class*="plugin"])');
-                        allElements.forEach(el => {
-                          const computedStyle = getComputedStyle(el);
-                          if (computedStyle.display === 'none') {
-                            el.style.display = 'block';
-                          }
-                          if (computedStyle.visibility === 'hidden') {
-                            el.style.visibility = 'visible';
-                          }
-                          if (computedStyle.opacity === '0') {
-                            el.style.opacity = '1';
-                          }
-                        });
-                        
-                        const clonedImages = clonedBody.querySelectorAll('img:not([id*="scroll"]):not([class*="scroll"])');
-                        clonedImages.forEach(img => {
-                          if (img.src) {
-                            const originalImg = document.querySelector(`img[src="${img.src}"]:not([id*="scroll"]):not([class*="scroll"])`);
-                            if (originalImg && originalImg.complete) {
-                              img.src = originalImg.src;
-                            }
-                          }
-                        });
-                      }
-                    }
-                  });
-                  
-                  screenshots.push({
-                    canvas: retryCanvas,
-                    scrollY: scrollY,
-                    height: retryCanvas.height
-                  });
-                } else {
-                  // 如果不是黑屏，使用原始canvas
-                  screenshots.push({
-                    canvas: canvas,
-                    scrollY: scrollY,
-                    height: canvas.height
-                  });
-                }
+              if (realtimeState.capturedSections.length === 0) {
+                throw new Error('没有捕获到任何截图区域');
               }
               
-              // 恢复原始滚动位置
-              window.scrollTo(originalScrollX, originalScrollY);
+              // 按滚动位置排序
+              realtimeState.capturedSections.sort((a, b) => a.scrollY - b.scrollY);
               
-              // 创建最终的长截图
-              const finalWidth = selectedRect.width;
-              const finalHeight = Math.max(finalScrollY, pageHeight);
+              // 创建最终画布
+              const selectedWidth = realtimeState.selectedRect.width;
+              const finalHeight = realtimeState.capturedSections[realtimeState.capturedSections.length - 1].scrollY + 
+                                 realtimeState.capturedSections[realtimeState.capturedSections.length - 1].height;
               
               const finalCanvas = document.createElement('canvas');
-              finalCanvas.width = finalWidth;
+              finalCanvas.width = selectedWidth;
               finalCanvas.height = finalHeight;
               
               const ctx = finalCanvas.getContext('2d');
               
-              // 按顺序绘制所有截图片段，增加错误处理
-              for (const screenshot of screenshots) {
-                const scale = screenshot.canvas.width / pageWidth;
-                const sourceX = selectedRect.left * scale;
-                const sourceWidth = selectedRect.width * scale;
+              // 拼接所有截图
+              for (const section of realtimeState.capturedSections) {
+                const { canvas, scrollY, height } = section;
+                const scale = canvas.width / Math.max(
+                  document.body.scrollWidth,
+                  document.body.offsetWidth,
+                  document.documentElement.clientWidth,
+                  document.documentElement.scrollWidth,
+                  document.documentElement.offsetWidth
+                );
                 
-                // 检查canvas是否有效
-                if (screenshot.canvas.width > 0 && screenshot.canvas.height > 0) {
+                const sourceX = realtimeState.selectedRect.left * scale;
+                const sourceWidth = realtimeState.selectedRect.width * scale;
+                
+                if (canvas.width > 0 && canvas.height > 0) {
                   try {
                     ctx.drawImage(
-                      screenshot.canvas,
-                      sourceX, 0, sourceWidth, screenshot.canvas.height,
-                      0, screenshot.scrollY, finalWidth, screenshot.height
+                      canvas,
+                      sourceX, 0, sourceWidth, canvas.height,
+                      0, scrollY, selectedWidth, height
                     );
                   } catch (drawErr) {
-                    console.error('绘制截图片段失败:', drawErr);
-                    // 创建一个空白矩形作为替代
+                    console.error('绘制失败:', drawErr);
                     ctx.fillStyle = '#ffffff';
-                    ctx.fillRect(0, screenshot.scrollY, finalWidth, screenshot.height);
+                    ctx.fillRect(0, scrollY, selectedWidth, height);
                   }
                 }
               }
               
-              // 转换为blob并复制到剪贴板
+              // 转换并复制
               finalCanvas.toBlob(async (blob) => {
                 try {
                   const dataUrl = finalCanvas.toDataURL('image/png');
@@ -810,30 +719,28 @@ $("scrollCapture").onclick = async () => {
                     dataUrl: dataUrl
                   }, async (response) => {
                     if (response && response.success) {
-                      showSuccessMessage(finalWidth, finalHeight);
+                      showSuccessMessage(selectedWidth, finalHeight);
                     } else {
                       try {
                         await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                        showSuccessMessage(finalWidth, finalHeight);
+                        showSuccessMessage(selectedWidth, finalHeight);
                       } catch (directError) {
-                        console.error('直接写入剪贴板失败:', directError);
+                        console.error('直接写入失败:', directError);
                         showErrorMessage(blob, directError.message);
                       }
                     }
                   });
                 } catch (err) {
-                  console.error('截图处理失败:', err);
+                  console.error('处理失败:', err);
                   showErrorMessage(null, err.message);
                 }
               });
               
-              // 显示成功消息的辅助函数
+              // 显示成功消息
               function showSuccessMessage(width, height) {
-                // 清理界面
                 document.body.removeChild(container);
                 document.body.removeChild(controlPanel);
                 
-                // 显示成功提示
                 const successToast = document.createElement('div');
                 successToast.style.cssText = `
                   position: fixed;
@@ -849,7 +756,7 @@ $("scrollCapture").onclick = async () => {
                   z-index: 1000000000;
                   box-shadow: 0 4px 12px rgba(82, 196, 26, 0.3);
                 `;
-                successToast.textContent = `✅ 滚动截图成功 (${Math.round(width)} × ${Math.round(height)} 像素)`;
+                successToast.textContent = `✅ 实时滚动截图成功 (${Math.round(width)} × ${Math.round(height)} 像素)`;
                 document.body.appendChild(successToast);
                 
                 setTimeout(() => {
@@ -859,13 +766,11 @@ $("scrollCapture").onclick = async () => {
                 }, 3000);
               }
               
-              // 显示错误消息的辅助函数
+              // 显示错误消息
               function showErrorMessage(blob, errorMessage) {
-                // 清理界面
                 document.body.removeChild(container);
                 document.body.removeChild(controlPanel);
                 
-                // 显示友好错误提示并提供下载选项
                 const errorToast = document.createElement('div');
                 errorToast.style.cssText = `
                   position: fixed;
@@ -902,19 +807,16 @@ $("scrollCapture").onclick = async () => {
                 
                 document.body.appendChild(errorToast);
                 
-                // 添加下载功能
                 if (blob && document.getElementById('downloadBtn')) {
                   document.getElementById('downloadBtn').onclick = () => {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `scroll-screenshot-${new Date().getTime()}.png`;
+                    a.download = `realtime-screenshot-${new Date().getTime()}.png`;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
-                    
-                    // 移除错误提示
                     document.body.removeChild(errorToast);
                   };
                 }
@@ -925,11 +827,11 @@ $("scrollCapture").onclick = async () => {
                   }
                 }, 5000);
               }
-            } catch (err) {
-              console.error('滚动截图失败:', err);
-              alert('滚动截图失败: ' + err.message);
               
-              // 恢复按钮状态
+            } catch (err) {
+              console.error('生成最终截图失败:', err);
+              alert('截图失败: ' + err.message);
+              
               confirmBtn.disabled = false;
               confirmBtn.textContent = '✅ 确认截图';
               cancelBtn.disabled = false;
@@ -937,8 +839,14 @@ $("scrollCapture").onclick = async () => {
             }
           };
           
-          // 结束按钮点击事件
-          document.getElementById('finishBtn').onclick = finishScrollCapture;
+          // 绑定事件
+          document.getElementById('finishRealtimeBtn').onclick = finishRealtimeCapture;
+          window.addEventListener('scroll', scrollHandler);
+          document.addEventListener('keydown', keyHandler);
+          
+          // 开始实时截图
+          updatePreviewStatus('开始滚动以触发截图...');
+          realtimeState.lastScrollY = window.scrollY;
         };
         
         // 取消操作
