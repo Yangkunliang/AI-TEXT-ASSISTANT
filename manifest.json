@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "AI文本助手 - 网页总结与文案润色",
+  "version": "1.0.0",
+  "description": "一键总结网页、文案润色、翻译、滚动截图+AI总结截图内容",
+  "author": "你的名字",
+  "permissions": ["activeTab", "scripting", "storage", "downloads", "tabs", "clipboardWrite"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AI文本助手"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["html2canvas.min.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

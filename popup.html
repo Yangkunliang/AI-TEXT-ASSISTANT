@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      width: 380px;
+      padding: 14px;
+      font-size: 14px;
+      background: #fff;
+    }
+    .title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: #2d8cf0;
+    }
+    textarea {
+      width: 100%;
+      height: 100px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      resize: none;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    button {
+      flex: 1;
+      min-width: 100px;
+      padding: 8px 10px;
+      background: #2d8cf0;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: 0.2s;
+    }
+    button:hover {
+      background: #1b78d8;
+    }
+    .btn-line {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    #result {
+      margin-top: 12px;
+      padding: 10px;
+      background: #f7f8fa;
+      border-radius: 6px;
+      min-height: 60px;
+      white-space: pre-wrap;
+      font-size: 13px;
+      line-height: 1.5;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .tip {
+      font-size: 12px;
+      color: #999;
+      margin-top: 6px;
+    }
+    .contact-section {
+      margin-top: 16px;
+      padding: 16px;
+      border: 1px solid #e1f0ff;
+      border-radius: 8px;
+      background: #f8fbff;
+    }
+    .contact-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #2d8cf0;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .qrcode {
+      display: block;
+      text-align: center;
+    }
+    .qrcode img {
+      width: 160px;
+      height: 160px;
+      object-fit: contain;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .qrcode img:hover {
+      transform: scale(1.05);
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.9);
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-content {
+      position: relative;
+      max-width: 90%;
+      max-height: 90%;
+    }
+    .modal-content img {
+      width: auto;
+      height: auto;
+      max-width: 100%;
+      max-height: 100%;
+    }
+    .close {
+      position: absolute;
+      top: -40px;
+      right: 0;
+      color: white;
+      font-size: 30px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .close:hover {
+      color: #ccc;
+    }
+    /* 截图工具样式 */
+    .screenshot-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 9999;
+      cursor: crosshair;
+    }
+    .screenshot-selection {
+      position: absolute;
+      border: 2px solid #2d8cf0;
+      background-color: rgba(45, 140, 240, 0.1);
+      pointer-events: none;
+    }
+    .screenshot-controls {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      display: none;
+      z-index: 10000;
+    }
+    .screenshot-controls button {
+      margin: 0 5px;
+      padding: 6px 12px;
+      font-size: 12px;
+      min-width: 80px;
+    }
+    .qrcode p {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #666;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="title">AI 文本助手</div>
+  <textarea id="inputText" placeholder="输入文字，或点击【总结当前网页】自动读取内容…"></textarea>
+
+  <div class="btn-group">
+    <button id="summaryPage">总结当前网页</button>
+    <button id="polish">文案润色</button>
+    <button id="translate">翻译成中文</button>
+  </div>
+
+  <div class="btn-group">
+    <button id="scrollScreenshot">截图</button>
+    <button id="scrollCapture">滚动截图</button>
+    <button id="extractText">提取文字</button>
+    <button id="summaryScreenshot">总结页面</button>
+  </div>
+  <div class="tip">滚动截图：选择区域后，手动滚动到目标位置，按ESC完成截图</div>
+
+  <div class="btn-line">
+    <button id="copyResult">复制结果</button>
+    <button id="clearAll">清空</button>
+    <button id="openSettings">设置API Key</button>
+  </div>
+
+  <div id="result">结果将显示在这里…</div>
+  <div class="tip">支持 DeepSeek / OpenAI 接口 | 滚动截图：选择区域后滚动鼠标，点击确认生成长截图</div>
+
+  <!-- 联系部分 -->
+  <div class="contact-section">
+    <div class="contact-title">有需求联系我</div>
+    <div class="qrcode">
+      <img id="qrcodeImage" src="icons/contacts.jpg" alt="微信二维码">
+      <p>扫码添加微信</p>
+    </div>
+  </div>
+
+  <!-- 二维码放大模态框 -->
+  <div id="qrcodeModal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <img id="modalQrcodeImage" src="icons/contacts.jpg" alt="微信二维码">
+    </div>
+  </div>
+
+  <!-- 截图工具 -->
+  <div id="screenshotOverlay" class="screenshot-overlay"></div>
+  <div id="screenshotSelection" class="screenshot-selection"></div>
+  <div id="screenshotControls" class="screenshot-controls">
+    <button id="screenshotCancel">取消</button>
+    <button id="screenshotConfirm">确认截图</button>
+  </div>
+
+  <!-- 引入截图库 -->
+  <script src="html2canvas.min.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
