@@ -300,209 +300,71 @@ if ($("scrollCapture")) {
 
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      // func: async () => {
-      //   if (document.getElementById('ss-overlay')) return;
-
-      //   // 1. 创建 UI 遮罩层
-      //   const overlay = document.createElement('div');
-      //   overlay.id = 'ss-overlay';
-      //   overlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999999; background: rgba(0,0,0,0.3); cursor: crosshair;`;
-      //   const selection = document.createElement('div');
-      //   selection.style.cssText = `position: absolute; border: 2px solid #2d8cf0; background: rgba(45,140,240,0.1); pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,0.3);`;
-      //   const panel = document.createElement('div');
-      //   panel.style.cssText = `position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: white; border-radius: 8px; padding: 12px 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; gap: 12px; align-items: center; z-index: 100000000; font-size: 14px;`;
-      //   panel.innerHTML = `<span>请拖拽选择截图区域</span>
-      //     <button id="ss-ok" style="background:#2d8cf0;color:white;border:none;border-radius:4px;padding:6px 12px;cursor:pointer;opacity:0.5" disabled>开始截图</button>
-      //     <button id="ss-close" style="background:#eee;border:1px solid #ccc;border-radius:4px;padding:6px 12px;cursor:pointer">取消</button>`;
-      //   document.body.append(overlay, panel);
-
-      //   let isDrawing = false, startX, startY, rect = null;
-
-      //   overlay.onmousedown = (e) => {
-      //     isDrawing = true; startX = e.clientX; startY = e.clientY;
-      //     overlay.appendChild(selection);
-      //   };
-      //   overlay.onmousemove = (e) => {
-      //     if (!isDrawing) return;
-      //     const x = Math.min(startX, e.clientX), y = Math.min(startY, e.clientY);
-      //     const w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
-      //     selection.style.left = x + 'px'; selection.style.top = y + 'px';
-      //     selection.style.width = w + 'px'; selection.style.height = h + 'px';
-      //     rect = { x, y, w, h };
-      //   };
-      //   overlay.onmouseup = () => {
-      //     isDrawing = false;
-      //     if (rect && rect.w > 20) {
-      //       const ok = document.getElementById('ss-ok');
-      //       ok.disabled = false; ok.style.opacity = '1';
-      //     }
-      //   };
-
-      //   // 2. 开始截图逻辑
-      //   document.getElementById('ss-ok').onclick = async () => {
-      //     overlay.style.display = 'none';
-
-      //     // 创建实时预览窗口
-      //     const preRoot = document.createElement('div');
-      //     preRoot.style.cssText = `position: fixed; top: 70px; right: 20px; width: 220px; background: white; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 100000001; overflow: hidden;`;
-      //     preRoot.innerHTML = `<div style="padding:8px;background:#2d8cf0;color:white;font-size:12px">正在实时拼接预览...</div>
-      //       <div id="p-box" style="max-height:300px;overflow-y:auto;background:#f5f5f5">
-      //         <canvas id="p-cvs" style="width:100%;display:block"></canvas>
-      //       </div>
-      //       <div style="padding:8px;text-align:right"><button id="p-done" style="padding:5px 12px;background:#2d8cf0;color:white;border:none;border-radius:4px;cursor:pointer">完成并复制</button></div>`;
-      //     document.body.appendChild(preRoot);
-
-      //     const pCvs = document.getElementById('p-cvs'), pCtx = pCvs.getContext('2d');
-      //     const offCvs = document.createElement('canvas'), offCtx = offCvs.getContext('2d');
-
-      //     const state = {
-      //       frames: [],
-      //       lastY: window.scrollY,
-      //       rect: rect,
-      //       dpr: window.devicePixelRatio || 1,
-      //       vh: window.innerHeight
-      //     };
-
-      //     // 自动隐藏固定元素避免重影
-      //     const fixeds = Array.from(document.querySelectorAll('*')).filter(el => {
-      //       const s = getComputedStyle(el);
-      //       return (s.position === 'fixed' || s.position === 'sticky') && !el.contains(preRoot);
-      //     });
-      //     fixeds.forEach(el => el.style.visibility = 'hidden');
-
-      //     const doCapture = async () => {
-      //       preRoot.style.visibility = 'hidden';
-      //       await new Promise(r => setTimeout(r, 150));
-      //       const res = await chrome.runtime.sendMessage({ type: 'captureTab' });
-      //       preRoot.style.visibility = 'visible';
-
-      //       if (res?.dataUrl) {
-      //         const img = new Image();
-      //         img.src = res.dataUrl;
-      //         await new Promise(r => img.onload = r);
-
-      //         const frame = document.createElement('canvas');
-      //         frame.width = state.rect.w; frame.height = state.vh;
-      //         const fCtx = frame.getContext('2d');
-
-      //         // 【核心修复：重叠问题】计算 captureVisibleTab 截取图片的真实比例
-      //         // 必须考虑浏览器缩放和 DPR 的综合影响
-      //         const scale = img.width / (window.innerWidth * state.dpr);
-      //         fCtx.drawImage(img,
-      //           state.rect.x * state.dpr * scale, 0,
-      //           state.rect.w * state.dpr * scale, state.vh * state.dpr * scale,
-      //           0, 0, state.rect.w, state.vh
-      //         );
-
-      //         state.frames.push({ cvs: frame, y: window.scrollY });
-
-      //         // 【核心修复：闪烁问题】离屏更新预览
-      //         const pW = 220;
-      //         const pScale = pW / state.rect.w;
-      //         const totalH = state.frames.length * state.vh * pScale;
-
-      //         // 仅在必要时扩容，扩容不重置 offCanvas 的绘图上下文
-      //         if (offCvs.height < totalH) offCvs.height = totalH;
-      //         offCvs.width = pW;
-
-      //         state.frames.forEach((f, i) => {
-      //           offCtx.drawImage(f.cvs, 0, i * state.vh * pScale, pW, state.vh * pScale);
-      //         });
-
-      //         pCvs.width = offCvs.width; pCvs.height = offCvs.height;
-      //         pCtx.drawImage(offCvs, 0, 0);
-      //         document.getElementById('p-box').scrollTop = 99999;
-      //       }
-      //     };
-
-      //     const handleScroll = () => {
-      //       if (Math.abs(window.scrollY - state.lastY) > state.vh * 0.75) {
-      //         state.lastY = window.scrollY;
-      //         doCapture();
-      //       }
-      //     };
-
-      //     window.addEventListener('scroll', handleScroll);
-      //     doCapture();
-
-      //     document.getElementById('p-done').onclick = async () => {
-      //       window.removeEventListener('scroll', handleScroll);
-      //       fixeds.forEach(el => el.style.visibility = 'visible');
-
-      //       const final = document.createElement('canvas');
-      //       const sorted = state.frames.sort((a, b) => a.y - b.y);
-      //       const minY = sorted[0].y, maxY = sorted[sorted.length - 1].y + state.vh;
-
-      //       final.width = state.rect.w; final.height = maxY - minY;
-      //       const fCtx = final.getContext('2d');
-
-      //       // 物理绝对坐标拼接
-      //       sorted.forEach(f => fCtx.drawImage(f.cvs, 0, f.y - minY));
-
-      //       final.toBlob(async blob => {
-      //         const item = new ClipboardItem({ 'image/png': blob });
-      //         await navigator.clipboard.write([item]);
-      //         preRoot.remove(); overlay.remove(); panel.remove();
-      //         // 给一个轻量提示
-      //         const toast = document.createElement('div');
-      //         toast.textContent = "✅ 已合成长图并复制到剪贴板";
-      //         toast.style.cssText = `position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#52c41a;color:white;padding:10px 20px;border-radius:5px;z-index:999999999`;
-      //         document.body.appendChild(toast);
-      //         setTimeout(() => toast.remove(), 2500);
-      //       });
-      //     };
-      //   };
-      //   document.getElementById('ss-close').onclick = () => { overlay.remove(); panel.remove(); };
-      // }
       func: async () => {
-        if (document.getElementById('ss-overlay')) return;
+        if (document.getElementById('ss-full-mask')) return;
 
-        // 1. UI 遮罩
-        const overlay = document.createElement('div');
-        overlay.id = 'ss-overlay';
-        overlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999999; background: rgba(0,0,0,0.3); cursor: crosshair;`;
+        // 1. 建立视口固定遮罩 (Fixed)
+        const mask = document.createElement('div');
+        mask.id = 'ss-full-mask';
+        mask.style.cssText = `position:fixed; top:0; left:0; width:100%; height:100%; z-index:2147483640; background:rgba(0,0,0,0.5); cursor:crosshair;`;
+
         const selection = document.createElement('div');
-        selection.style.cssText = `position: absolute; border: 2px solid #2d8cf0; background: rgba(45,140,240,0.1); pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,0.3);`;
-        const panel = document.createElement('div');
-        panel.style.cssText = `position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: white; border-radius: 8px; padding: 12px 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; gap: 12px; align-items: center; z-index: 100000000; font-size: 14px;`;
-        panel.innerHTML = `<span>请选区（搜索框需在选区内）</span>
-          <button id="ss-ok" style="background:#2d8cf0;color:white;border:none;border-radius:4px;padding:6px 12px;cursor:pointer;opacity:0.5" disabled>开始截图</button>
-          <button id="ss-close" style="background:#eee;border:1px solid #ccc;border-radius:4px;padding:6px 12px;cursor:pointer">取消</button>`;
-        document.body.append(overlay, panel);
+        selection.id = 'ss-selection';
+        selection.style.cssText = `position:fixed; border:2px solid #2d8cf0; background:rgba(45,140,240,0.1); pointer-events:none; box-shadow:0 0 0 9999px rgba(0,0,0,0.5); z-index:2147483641; display:none; opacity:1; transition:opacity 0.1s;`;
 
-        let isDrawing = false, startX, startY, rect = null;
-        overlay.onmousedown = (e) => { isDrawing = true; startX = e.clientX; startY = e.clientY; overlay.appendChild(selection); };
-        overlay.onmousemove = (e) => {
+        const hint = document.createElement('div');
+        hint.style.cssText = `position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:10px 24px; border-radius:30px; font-size:14px; z-index:2147483647; pointer-events:none;`;
+        hint.innerText = "请框选区域，选区将固定在屏幕上，请向下滚动网页内容";
+        document.body.append(mask, hint);
+
+        let isDrawing = false, sX, sY, rect = null;
+        mask.onmousedown = (e) => {
+          isDrawing = true;
+          sX = e.clientX;
+          sY = e.clientY;
+          selection.style.display = 'block';
+          document.body.appendChild(selection);
+        };
+        mask.onmousemove = (e) => {
           if (!isDrawing) return;
-          const x = Math.min(startX, e.clientX), y = Math.min(startY, e.clientY);
-          const w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
+          const x = Math.min(sX, e.clientX), y = Math.min(sY, e.clientY);
+          const w = Math.abs(e.clientX - sX), h = Math.abs(e.clientY - sY);
           selection.style.left = x + 'px'; selection.style.top = y + 'px';
           selection.style.width = w + 'px'; selection.style.height = h + 'px';
-          rect = { x, y, w, h };
-        };
-        overlay.onmouseup = () => {
-          isDrawing = false;
-          if (rect && rect.w > 20) {
-            const ok = document.getElementById('ss-ok');
-            ok.disabled = false; ok.style.opacity = '1';
-          }
+          rect = { x, y, w, h }; // 这里的坐标是相对于视口(viewport)的固定坐标
         };
 
-        document.getElementById('ss-ok').onclick = async () => {
-          overlay.style.display = 'none';
+        mask.onmouseup = () => { if (rect && rect.w > 20) startCapture(); };
 
-          const preRoot = document.createElement('div');
-          preRoot.style.cssText = `position: fixed; top: 70px; right: 20px; width: 220px; background: white; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 100000001; overflow: hidden;`;
-          preRoot.innerHTML = `<div style="padding:8px;background:#2d8cf0;color:white;font-size:12px">正在截图... (请向下滚动)</div>
-            <div id="p-box" style="max-height:300px;overflow-y:auto;background:#eee">
-              <canvas id="p-cvs" style="width:100%;display:block"></canvas>
-            </div>
-            <div style="padding:8px;text-align:right"><button id="p-done" style="padding:5px 12px;background:#2d8cf0;color:white;border:none;border-radius:4px;cursor:pointer">停止并导出</button></div>`;
-          document.body.appendChild(preRoot);
+        const startCapture = async () => {
+          hint.innerText = "📸 请缓慢向下滚动网页内容，完成后点击下方 ✓";
+          mask.style.pointerEvents = 'none';
+
+          // 2. 飞书式边缘预览 (Fixed，紧贴选区)
+          const isRightSpace = (window.innerWidth - rect.x - rect.w) > 140;
+          const sideView = document.createElement('div');
+          sideView.style.cssText = `position:fixed; 
+            left: ${isRightSpace ? (rect.x + rect.w + 10) : (rect.x - 130)}px; 
+            top: ${rect.y}px; 
+            width: 120px; height: 320px; 
+            background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); 
+            z-index: 2147483645; overflow: hidden; display: flex; flex-direction: column; 
+            border: 1px solid #2d8cf0; transition: opacity 0.1s;`;
+          sideView.innerHTML = `<div id="p-box" style="flex:1; overflow-y:auto; background:#f5f5f5;"><canvas id="p-cvs" style="width:100%;"></canvas></div>`;
+
+          const ctrl = document.createElement('div');
+          ctrl.style.cssText = `position:fixed; 
+            left: ${rect.x + rect.w - 100}px; top: ${rect.y + rect.h + 10}px; 
+            display: flex; gap: 12px; z-index: 2147483647; padding: 8px; 
+            background: white; border-radius: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); 
+            transition: opacity 0.1s;`;
+          ctrl.innerHTML = `
+            <button id="p-ok" style="width:36px; height:36px; border-radius:50%; border:none; background:#2d8cf0; color:white; cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center;">✓</button>
+            <button id="p-no" style="width:36px; height:36px; border-radius:50%; border:none; background:#f0f0f0; color:#666; cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center;">✕</button>
+          `;
+          document.body.append(sideView, ctrl);
 
           const pCvs = document.getElementById('p-cvs'), pCtx = pCvs.getContext('2d');
-          const offCvs = document.createElement('canvas'), offCtx = offCvs.getContext('2d');
-
           const state = {
             frames: [],
             lastY: window.scrollY,
@@ -510,106 +372,93 @@ if ($("scrollCapture")) {
             rect: rect,
             dpr: window.devicePixelRatio || 1,
             vh: window.innerHeight,
-            isCapturing: false
+            isCapturing: false,
+            mainCanvas: document.createElement('canvas')
           };
-
-          // 获取所有固定元素
-          const fixeds = Array.from(document.querySelectorAll('*')).filter(el => {
-            const s = getComputedStyle(el);
-            return (s.position === 'fixed' || s.position === 'sticky') && !el.contains(preRoot);
-          });
+          state.mainCanvas.width = rect.w;
 
           const doCapture = async () => {
             if (state.isCapturing) return;
             state.isCapturing = true;
 
-            // 💡 只有非第一帧才隐藏固定元素，解决“搜索框没截到”的问题
-            if (state.frames.length > 0) {
-              fixeds.forEach(el => el.style.opacity = '0');
-            }
+            // 隐藏 UI 防止截入
+            const ui = [sideView, ctrl, hint, selection, mask];
+            ui.forEach(el => el.style.opacity = '0');
 
-            // 💡 仅让预览框透明而非隐藏，减少布局抖动
-            preRoot.style.opacity = '0.05';
-            await new Promise(r => setTimeout(r, 100));
-
+            await new Promise(r => requestAnimationFrame(() => setTimeout(r, 200)));
             const res = await chrome.runtime.sendMessage({ type: 'captureTab' });
-            preRoot.style.opacity = '1';
-            fixeds.forEach(el => el.style.opacity = '1'); // 截图完立即恢复
+            ui.forEach(el => el.style.opacity = '1');
 
             if (res?.dataUrl) {
               const img = new Image();
               img.src = res.dataUrl;
               await new Promise(r => img.onload = r);
 
-              const currentY = window.scrollY;
-              const frame = document.createElement('canvas');
-              frame.width = state.rect.w;
-              frame.height = state.vh;
-              const fCtx = frame.getContext('2d');
-
-              // 💡 核心校准：计算 captureVisibleTab 物理像素与逻辑像素的真实缩放比
               const scale = img.width / (window.innerWidth * state.dpr);
+              const curY = Math.round(window.scrollY);
 
-              fCtx.drawImage(img,
-                state.rect.x * state.dpr * scale, 0,
-                state.rect.w * state.dpr * scale, state.vh * state.dpr * scale,
-                0, 0, state.rect.w, state.vh
-              );
+              const isFirst = state.frames.length === 0;
+              const frameCvs = document.createElement('canvas');
+              frameCvs.width = rect.w;
 
-              state.frames.push({ cvs: frame, y: currentY });
+              if (isFirst) {
+                frameCvs.height = rect.h;
+                // 第一帧截取当前选区框内的全部内容
+                frameCvs.getContext('2d').drawImage(img, rect.x * state.dpr * scale, rect.y * state.dpr * scale, rect.w * state.dpr * scale, rect.h * state.dpr * scale, 0, 0, rect.w, rect.h);
+              } else {
+                // 续帧：只截取视口底部由于滚动新露出来的增量部分
+                const deltaY = Math.min(curY - state.lastY, rect.h);
+                if (deltaY <= 2) { state.isCapturing = false; return; }
 
-              // 更新预览
-              const pW = 220;
-              const pScale = pW / state.rect.w;
-              const totalH = (currentY - state.startY + state.vh) * pScale;
+                frameCvs.height = deltaY;
+                // 从视口底部截取 deltaY 高度的像素
+                frameCvs.getContext('2d').drawImage(img,
+                  rect.x * state.dpr * scale, (rect.y + rect.h - deltaY) * state.dpr * scale,
+                  rect.w * state.dpr * scale, deltaY * state.dpr * scale,
+                  0, 0, rect.w, deltaY
+                );
+              }
 
-              offCvs.width = pW; offCvs.height = totalH;
-              state.frames.forEach(f => {
-                offCtx.drawImage(f.cvs, 0, (f.y - state.startY) * pScale, pW, state.vh * pScale);
-              });
+              state.frames.push({ cvs: frameCvs });
+              let totalH = state.frames.reduce((acc, f) => acc + f.cvs.height, 0);
+              state.mainCanvas.height = totalH;
+              const mCtx = state.mainCanvas.getContext('2d');
+              let hOffset = 0;
+              state.frames.forEach(f => { mCtx.drawImage(f.cvs, 0, hOffset); hOffset += f.cvs.height; });
 
-              pCvs.width = offCvs.width; pCvs.height = offCvs.height;
-              pCtx.drawImage(offCvs, 0, 0);
+              pCvs.width = 120; pCvs.height = totalH * (120 / rect.w);
+              pCtx.drawImage(state.mainCanvas, 0, 0, pCvs.width, pCvs.height);
               document.getElementById('p-box').scrollTop = 99999;
+              state.lastY = curY;
             }
             state.isCapturing = false;
           };
 
-          const handleScroll = () => {
-            // 每滚动 60% 视口截一次，增加重叠覆盖面以确保无缝
-            if (Math.abs(window.scrollY - state.lastY) > state.vh * 0.6) {
-              state.lastY = window.scrollY;
-              doCapture();
-            }
+          const onScroll = () => {
+            clearTimeout(state.timer);
+            state.timer = setTimeout(() => {
+              if (window.scrollY - state.lastY > 40) doCapture();
+            }, 150);
           };
 
-          window.addEventListener('scroll', handleScroll);
-          doCapture();
+          const cleanup = () => {
+            window.removeEventListener('scroll', onScroll);
+            [mask, sideView, ctrl, hint, selection].forEach(el => el && el.remove());
+          };
 
-          document.getElementById('p-done').onclick = async () => {
-            window.removeEventListener('scroll', handleScroll);
-            const final = document.createElement('canvas');
-            const sorted = state.frames.sort((a, b) => a.y - b.y);
-            const minY = state.startY, maxY = sorted[sorted.length - 1].y + state.vh;
-
-            final.width = state.rect.w;
-            final.height = maxY - minY;
-            const fCtx = final.getContext('2d');
-
-            // 💡 采用绝对坐标绘制，彻底解决文字重叠
-            sorted.forEach(f => {
-              fCtx.drawImage(f.cvs, 0, f.y - minY);
-            });
-
-            final.toBlob(async blob => {
+          document.getElementById('p-ok').onclick = () => {
+            state.mainCanvas.toBlob(async blob => {
               const item = new ClipboardItem({ 'image/png': blob });
               await navigator.clipboard.write([item]);
-              preRoot.remove(); overlay.remove(); panel.remove();
-              alert("✅ 长截图已复制！");
+              cleanup();
+              alert("✅ 精准长截图已复制到剪贴板");
             });
           };
+          document.getElementById('p-no').onclick = cleanup;
+
+          window.addEventListener('scroll', onScroll);
+          doCapture();
         };
-        document.getElementById('ss-close').onclick = () => { overlay.remove(); panel.remove(); };
       }
     });
   };
