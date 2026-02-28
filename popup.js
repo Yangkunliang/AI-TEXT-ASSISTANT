@@ -294,818 +294,324 @@ if ($("scrollScreenshot")) {
 if ($("scrollCapture")) {
   $("scrollCapture").onclick = async () => {
     if (!checkKey()) return;
-
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab.url.startsWith('chrome://')) { show("❌ 无法在系统页面上截图"); return; }
+    show("正在准备截图环境...");
 
-    if (tab.url.startsWith('chrome://')) {
-      show("❌ 无法在 chrome:// 页面上截图");
-      return;
-    }
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      // func: async () => {
+      //   if (document.getElementById('ss-overlay')) return;
 
-    show("正在启动滚动截图...");
+      //   // 1. 创建 UI 遮罩层
+      //   const overlay = document.createElement('div');
+      //   overlay.id = 'ss-overlay';
+      //   overlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999999; background: rgba(0,0,0,0.3); cursor: crosshair;`;
+      //   const selection = document.createElement('div');
+      //   selection.style.cssText = `position: absolute; border: 2px solid #2d8cf0; background: rgba(45,140,240,0.1); pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,0.3);`;
+      //   const panel = document.createElement('div');
+      //   panel.style.cssText = `position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: white; border-radius: 8px; padding: 12px 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; gap: 12px; align-items: center; z-index: 100000000; font-size: 14px;`;
+      //   panel.innerHTML = `<span>请拖拽选择截图区域</span>
+      //     <button id="ss-ok" style="background:#2d8cf0;color:white;border:none;border-radius:4px;padding:6px 12px;cursor:pointer;opacity:0.5" disabled>开始截图</button>
+      //     <button id="ss-close" style="background:#eee;border:1px solid #ccc;border-radius:4px;padding:6px 12px;cursor:pointer">取消</button>`;
+      //   document.body.append(overlay, panel);
 
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['html2canvas.min.js']
-      });
+      //   let isDrawing = false, startX, startY, rect = null;
 
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: async () => {
-          // 防止重复注入
-          if (document.getElementById('scroll-screenshot-container')) return;
+      //   overlay.onmousedown = (e) => {
+      //     isDrawing = true; startX = e.clientX; startY = e.clientY;
+      //     overlay.appendChild(selection);
+      //   };
+      //   overlay.onmousemove = (e) => {
+      //     if (!isDrawing) return;
+      //     const x = Math.min(startX, e.clientX), y = Math.min(startY, e.clientY);
+      //     const w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
+      //     selection.style.left = x + 'px'; selection.style.top = y + 'px';
+      //     selection.style.width = w + 'px'; selection.style.height = h + 'px';
+      //     rect = { x, y, w, h };
+      //   };
+      //   overlay.onmouseup = () => {
+      //     isDrawing = false;
+      //     if (rect && rect.w > 20) {
+      //       const ok = document.getElementById('ss-ok');
+      //       ok.disabled = false; ok.style.opacity = '1';
+      //     }
+      //   };
 
-          // 创建主容器
-          const container = document.createElement('div');
-          container.id = 'scroll-screenshot-container';
-          container.style.cssText = `
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          z-index: 999999999;
-          background: rgba(0,0,0,0.3);
-        `;
+      //   // 2. 开始截图逻辑
+      //   document.getElementById('ss-ok').onclick = async () => {
+      //     overlay.style.display = 'none';
 
-          // 创建选择区域
-          const selectionBox = document.createElement('div');
-          selectionBox.id = 'scroll-selection-box';
-          selectionBox.style.cssText = `
-          position: absolute;
-          border: 2px solid #2d8cf0;
-          background: rgba(45,140,240,0.1);
-          pointer-events: none;
-          box-shadow: 0 0 0 9999px rgba(0,0,0,0.3);
-        `;
+      //     // 创建实时预览窗口
+      //     const preRoot = document.createElement('div');
+      //     preRoot.style.cssText = `position: fixed; top: 70px; right: 20px; width: 220px; background: white; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 100000001; overflow: hidden;`;
+      //     preRoot.innerHTML = `<div style="padding:8px;background:#2d8cf0;color:white;font-size:12px">正在实时拼接预览...</div>
+      //       <div id="p-box" style="max-height:300px;overflow-y:auto;background:#f5f5f5">
+      //         <canvas id="p-cvs" style="width:100%;display:block"></canvas>
+      //       </div>
+      //       <div style="padding:8px;text-align:right"><button id="p-done" style="padding:5px 12px;background:#2d8cf0;color:white;border:none;border-radius:4px;cursor:pointer">完成并复制</button></div>`;
+      //     document.body.appendChild(preRoot);
 
-          // 创建控制面板
-          const controlPanel = document.createElement('div');
-          controlPanel.id = 'scroll-control-panel';
-          controlPanel.style.cssText = `
-          position: fixed;
-          top: 20px;
-          left: 50%;
-          transform: translateX(-50%);
-          background: white;
-          border-radius: 8px;
-          padding: 12px 20px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-          display: flex;
-          gap: 12px;
-          align-items: center;
-          z-index: 1000000000;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        `;
+      //     const pCvs = document.getElementById('p-cvs'), pCtx = pCvs.getContext('2d');
+      //     const offCvs = document.createElement('canvas'), offCtx = offCvs.getContext('2d');
 
-          // 提示文本
-          const tipText = document.createElement('div');
-          tipText.textContent = '拖拽选择截图区域';
-          tipText.style.cssText = `
-          font-size: 14px;
-          color: #333;
-          font-weight: 500;
-        `;
+      //     const state = {
+      //       frames: [],
+      //       lastY: window.scrollY,
+      //       rect: rect,
+      //       dpr: window.devicePixelRatio || 1,
+      //       vh: window.innerHeight
+      //     };
 
-          // 确认按钮
-          const confirmBtn = document.createElement('button');
-          confirmBtn.textContent = '✅ 确认截图';
-          confirmBtn.style.cssText = `
-          background: #2d8cf0;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          padding: 8px 16px;
-          font-size: 13px;
-          cursor: pointer;
-          font-weight: 500;
-          transition: background 0.2s;
-        `;
-          confirmBtn.onmouseenter = () => confirmBtn.style.background = '#1b78d8';
-          confirmBtn.onmouseleave = () => confirmBtn.style.background = '#2d8cf0';
+      //     // 自动隐藏固定元素避免重影
+      //     const fixeds = Array.from(document.querySelectorAll('*')).filter(el => {
+      //       const s = getComputedStyle(el);
+      //       return (s.position === 'fixed' || s.position === 'sticky') && !el.contains(preRoot);
+      //     });
+      //     fixeds.forEach(el => el.style.visibility = 'hidden');
 
-          // 取消按钮
-          const cancelBtn = document.createElement('button');
-          cancelBtn.textContent = '取消';
-          cancelBtn.style.cssText = `
-          background: #f5f5f5;
-          color: #666;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          padding: 8px 16px;
-          font-size: 13px;
-          cursor: pointer;
-          font-weight: 500;
-          transition: all 0.2s;
-        `;
-          cancelBtn.onmouseenter = () => {
-            cancelBtn.style.background = '#e6e6e6';
-            cancelBtn.style.borderColor = '#ccc';
+      //     const doCapture = async () => {
+      //       preRoot.style.visibility = 'hidden';
+      //       await new Promise(r => setTimeout(r, 150));
+      //       const res = await chrome.runtime.sendMessage({ type: 'captureTab' });
+      //       preRoot.style.visibility = 'visible';
+
+      //       if (res?.dataUrl) {
+      //         const img = new Image();
+      //         img.src = res.dataUrl;
+      //         await new Promise(r => img.onload = r);
+
+      //         const frame = document.createElement('canvas');
+      //         frame.width = state.rect.w; frame.height = state.vh;
+      //         const fCtx = frame.getContext('2d');
+
+      //         // 【核心修复：重叠问题】计算 captureVisibleTab 截取图片的真实比例
+      //         // 必须考虑浏览器缩放和 DPR 的综合影响
+      //         const scale = img.width / (window.innerWidth * state.dpr);
+      //         fCtx.drawImage(img,
+      //           state.rect.x * state.dpr * scale, 0,
+      //           state.rect.w * state.dpr * scale, state.vh * state.dpr * scale,
+      //           0, 0, state.rect.w, state.vh
+      //         );
+
+      //         state.frames.push({ cvs: frame, y: window.scrollY });
+
+      //         // 【核心修复：闪烁问题】离屏更新预览
+      //         const pW = 220;
+      //         const pScale = pW / state.rect.w;
+      //         const totalH = state.frames.length * state.vh * pScale;
+
+      //         // 仅在必要时扩容，扩容不重置 offCanvas 的绘图上下文
+      //         if (offCvs.height < totalH) offCvs.height = totalH;
+      //         offCvs.width = pW;
+
+      //         state.frames.forEach((f, i) => {
+      //           offCtx.drawImage(f.cvs, 0, i * state.vh * pScale, pW, state.vh * pScale);
+      //         });
+
+      //         pCvs.width = offCvs.width; pCvs.height = offCvs.height;
+      //         pCtx.drawImage(offCvs, 0, 0);
+      //         document.getElementById('p-box').scrollTop = 99999;
+      //       }
+      //     };
+
+      //     const handleScroll = () => {
+      //       if (Math.abs(window.scrollY - state.lastY) > state.vh * 0.75) {
+      //         state.lastY = window.scrollY;
+      //         doCapture();
+      //       }
+      //     };
+
+      //     window.addEventListener('scroll', handleScroll);
+      //     doCapture();
+
+      //     document.getElementById('p-done').onclick = async () => {
+      //       window.removeEventListener('scroll', handleScroll);
+      //       fixeds.forEach(el => el.style.visibility = 'visible');
+
+      //       const final = document.createElement('canvas');
+      //       const sorted = state.frames.sort((a, b) => a.y - b.y);
+      //       const minY = sorted[0].y, maxY = sorted[sorted.length - 1].y + state.vh;
+
+      //       final.width = state.rect.w; final.height = maxY - minY;
+      //       const fCtx = final.getContext('2d');
+
+      //       // 物理绝对坐标拼接
+      //       sorted.forEach(f => fCtx.drawImage(f.cvs, 0, f.y - minY));
+
+      //       final.toBlob(async blob => {
+      //         const item = new ClipboardItem({ 'image/png': blob });
+      //         await navigator.clipboard.write([item]);
+      //         preRoot.remove(); overlay.remove(); panel.remove();
+      //         // 给一个轻量提示
+      //         const toast = document.createElement('div');
+      //         toast.textContent = "✅ 已合成长图并复制到剪贴板";
+      //         toast.style.cssText = `position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#52c41a;color:white;padding:10px 20px;border-radius:5px;z-index:999999999`;
+      //         document.body.appendChild(toast);
+      //         setTimeout(() => toast.remove(), 2500);
+      //       });
+      //     };
+      //   };
+      //   document.getElementById('ss-close').onclick = () => { overlay.remove(); panel.remove(); };
+      // }
+      func: async () => {
+        if (document.getElementById('ss-overlay')) return;
+
+        // 1. UI 遮罩
+        const overlay = document.createElement('div');
+        overlay.id = 'ss-overlay';
+        overlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999999; background: rgba(0,0,0,0.3); cursor: crosshair;`;
+        const selection = document.createElement('div');
+        selection.style.cssText = `position: absolute; border: 2px solid #2d8cf0; background: rgba(45,140,240,0.1); pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,0.3);`;
+        const panel = document.createElement('div');
+        panel.style.cssText = `position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: white; border-radius: 8px; padding: 12px 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; gap: 12px; align-items: center; z-index: 100000000; font-size: 14px;`;
+        panel.innerHTML = `<span>请选区（搜索框需在选区内）</span>
+          <button id="ss-ok" style="background:#2d8cf0;color:white;border:none;border-radius:4px;padding:6px 12px;cursor:pointer;opacity:0.5" disabled>开始截图</button>
+          <button id="ss-close" style="background:#eee;border:1px solid #ccc;border-radius:4px;padding:6px 12px;cursor:pointer">取消</button>`;
+        document.body.append(overlay, panel);
+
+        let isDrawing = false, startX, startY, rect = null;
+        overlay.onmousedown = (e) => { isDrawing = true; startX = e.clientX; startY = e.clientY; overlay.appendChild(selection); };
+        overlay.onmousemove = (e) => {
+          if (!isDrawing) return;
+          const x = Math.min(startX, e.clientX), y = Math.min(startY, e.clientY);
+          const w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
+          selection.style.left = x + 'px'; selection.style.top = y + 'px';
+          selection.style.width = w + 'px'; selection.style.height = h + 'px';
+          rect = { x, y, w, h };
+        };
+        overlay.onmouseup = () => {
+          isDrawing = false;
+          if (rect && rect.w > 20) {
+            const ok = document.getElementById('ss-ok');
+            ok.disabled = false; ok.style.opacity = '1';
+          }
+        };
+
+        document.getElementById('ss-ok').onclick = async () => {
+          overlay.style.display = 'none';
+
+          const preRoot = document.createElement('div');
+          preRoot.style.cssText = `position: fixed; top: 70px; right: 20px; width: 220px; background: white; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 100000001; overflow: hidden;`;
+          preRoot.innerHTML = `<div style="padding:8px;background:#2d8cf0;color:white;font-size:12px">正在截图... (请向下滚动)</div>
+            <div id="p-box" style="max-height:300px;overflow-y:auto;background:#eee">
+              <canvas id="p-cvs" style="width:100%;display:block"></canvas>
+            </div>
+            <div style="padding:8px;text-align:right"><button id="p-done" style="padding:5px 12px;background:#2d8cf0;color:white;border:none;border-radius:4px;cursor:pointer">停止并导出</button></div>`;
+          document.body.appendChild(preRoot);
+
+          const pCvs = document.getElementById('p-cvs'), pCtx = pCvs.getContext('2d');
+          const offCvs = document.createElement('canvas'), offCtx = offCvs.getContext('2d');
+
+          const state = {
+            frames: [],
+            lastY: window.scrollY,
+            startY: window.scrollY,
+            rect: rect,
+            dpr: window.devicePixelRatio || 1,
+            vh: window.innerHeight,
+            isCapturing: false
           };
-          cancelBtn.onmouseleave = () => {
-            cancelBtn.style.background = '#f5f5f5';
-            cancelBtn.style.borderColor = '#ddd';
+
+          // 获取所有固定元素
+          const fixeds = Array.from(document.querySelectorAll('*')).filter(el => {
+            const s = getComputedStyle(el);
+            return (s.position === 'fixed' || s.position === 'sticky') && !el.contains(preRoot);
+          });
+
+          const doCapture = async () => {
+            if (state.isCapturing) return;
+            state.isCapturing = true;
+
+            // 💡 只有非第一帧才隐藏固定元素，解决“搜索框没截到”的问题
+            if (state.frames.length > 0) {
+              fixeds.forEach(el => el.style.opacity = '0');
+            }
+
+            // 💡 仅让预览框透明而非隐藏，减少布局抖动
+            preRoot.style.opacity = '0.05';
+            await new Promise(r => setTimeout(r, 100));
+
+            const res = await chrome.runtime.sendMessage({ type: 'captureTab' });
+            preRoot.style.opacity = '1';
+            fixeds.forEach(el => el.style.opacity = '1'); // 截图完立即恢复
+
+            if (res?.dataUrl) {
+              const img = new Image();
+              img.src = res.dataUrl;
+              await new Promise(r => img.onload = r);
+
+              const currentY = window.scrollY;
+              const frame = document.createElement('canvas');
+              frame.width = state.rect.w;
+              frame.height = state.vh;
+              const fCtx = frame.getContext('2d');
+
+              // 💡 核心校准：计算 captureVisibleTab 物理像素与逻辑像素的真实缩放比
+              const scale = img.width / (window.innerWidth * state.dpr);
+
+              fCtx.drawImage(img,
+                state.rect.x * state.dpr * scale, 0,
+                state.rect.w * state.dpr * scale, state.vh * state.dpr * scale,
+                0, 0, state.rect.w, state.vh
+              );
+
+              state.frames.push({ cvs: frame, y: currentY });
+
+              // 更新预览
+              const pW = 220;
+              const pScale = pW / state.rect.w;
+              const totalH = (currentY - state.startY + state.vh) * pScale;
+
+              offCvs.width = pW; offCvs.height = totalH;
+              state.frames.forEach(f => {
+                offCtx.drawImage(f.cvs, 0, (f.y - state.startY) * pScale, pW, state.vh * pScale);
+              });
+
+              pCvs.width = offCvs.width; pCvs.height = offCvs.height;
+              pCtx.drawImage(offCvs, 0, 0);
+              document.getElementById('p-box').scrollTop = 99999;
+            }
+            state.isCapturing = false;
           };
 
-          controlPanel.appendChild(tipText);
-          controlPanel.appendChild(confirmBtn);
-          controlPanel.appendChild(cancelBtn);
-
-          // 状态变量
-          let isSelecting = false;
-          let startX = 0;
-          let startY = 0;
-          let selectedRect = null;
-
-          // 鼠标按下事件
-          container.onmousedown = (e) => {
-            if (e.target !== container) return;
-
-            isSelecting = true;
-            startX = e.clientX;
-            startY = e.clientY;
-
-            selectedRect = {
-              left: startX,
-              top: startY,
-              width: 0,
-              height: 0
-            };
-
-            selectionBox.style.left = startX + 'px';
-            selectionBox.style.top = startY + 'px';
-            selectionBox.style.width = '0px';
-            selectionBox.style.height = '0px';
-
-            container.appendChild(selectionBox);
-            tipText.textContent = '拖拽选择截图区域';
-          };
-
-          // 鼠标移动事件
-          container.onmousemove = (e) => {
-            if (!isSelecting) return;
-
-            const currentX = e.clientX;
-            const currentY = e.clientY;
-
-            const left = Math.min(startX, currentX);
-            const top = Math.min(startY, currentY);
-            const width = Math.abs(currentX - startX);
-            const height = Math.abs(currentY - startY);
-
-            selectionBox.style.left = left + 'px';
-            selectionBox.style.top = top + 'px';
-            selectionBox.style.width = width + 'px';
-            selectionBox.style.height = height + 'px';
-
-            selectedRect = { left, top, width, height };
-          };
-
-          // 鼠标释放事件
-          container.onmouseup = () => {
-            if (!isSelecting) return;
-
-            isSelecting = false;
-
-            if (selectedRect && selectedRect.width > 10 && selectedRect.height > 10) {
-              tipText.textContent = `已选择区域: ${Math.round(selectedRect.width)} × ${Math.round(selectedRect.height)} 像素 - 点击"确认截图"开始滚动截图，或直接滚动页面`;
-              confirmBtn.disabled = false;
-              confirmBtn.style.opacity = '1';
-              confirmBtn.style.cursor = 'pointer';
-
-              // 允许页面滚动，但保持容器可见
-              container.style.pointerEvents = 'none';
-              container.style.background = 'rgba(0,0,0,0.1)';
-
-              // 添加滚动提示
-              setTimeout(() => {
-                if (selectedRect && selectedRect.width > 10) {
-                  tipText.textContent = '✅ 区域已选择！现在可以滚动页面，或点击"确认截图"按钮';
-                }
-              }, 2000);
-            } else {
-              // 选择区域太小，重置
-              if (selectionBox.parentNode) {
-                selectionBox.parentNode.removeChild(selectionBox);
-              }
-              selectedRect = null;
-              tipText.textContent = '拖拽选择截图区域';
-              confirmBtn.disabled = true;
-              confirmBtn.style.opacity = '0.5';
-              confirmBtn.style.cursor = 'not-allowed';
-              // 恢复阻止滚动
-              container.style.pointerEvents = 'auto';
-              container.style.background = 'rgba(0,0,0,0.3)';
+          const handleScroll = () => {
+            // 每滚动 60% 视口截一次，增加重叠覆盖面以确保无缝
+            if (Math.abs(window.scrollY - state.lastY) > state.vh * 0.6) {
+              state.lastY = window.scrollY;
+              doCapture();
             }
           };
 
-          // 确认截图 - 实时滚动截图（飞书式）
-          confirmBtn.onclick = async () => {
-            if (!selectedRect || selectedRect.width < 10 || selectedRect.height < 10) return;
-
-            // 隐藏遮罩层，避免闪烁
-            if (container) container.style.display = 'none';
-
-            // 禁用按钮
-            confirmBtn.disabled = true;
-            confirmBtn.textContent = '准备实时截图...';
-            cancelBtn.disabled = true;
-            tipText.textContent = '开始实时滚动截图，请向下滚动页面...';
-
-            // 显示实时预览区域
-            const previewContainer = document.createElement('div');
-            previewContainer.id = 'realtime-preview';
-            previewContainer.style.cssText = `
-            position: fixed;
-            top: 60px;
-            right: 20px;
-            width: 300px;
-            max-height: 80vh;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-            z-index: 1000000001;
-            overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          `;
-
-            previewContainer.innerHTML = `
-            <div style="padding: 12px; background: #2d8cf0; color: white; font-weight: 500; font-size: 14px;">
-              📸 实时截图预览
-            </div>
-            <div id="preview-content" style="height: 400px; overflow-y: auto; background: #f5f5f5;">
-              <div id="preview-canvas-container" style="position: relative; width: 100%; min-height: 200px; display: flex; align-items: center; justify-content: center;">
-                <div style="color: #999; text-align: center;">
-                  <div>🔄 等待开始滚动...</div>
-                  <div style="font-size: 12px; margin-top: 8px;">请向下滚动页面开始截图</div>
-                </div>
-              </div>
-            </div>
-            <div style="padding: 10px; border-top: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
-              <div id="preview-status" style="font-size: 12px; color: #666;">准备就绪</div>
-              <button id="finishRealtimeBtn" style="
-                padding: 6px 12px;
-                background: #2d8cf0;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 12px;
-                font-weight: 500;
-              ">完成截图</button>
-            </div>
-          `;
-
-            document.body.appendChild(previewContainer);
-
-            // 实时截图状态管理
-            const realtimeState = {
-              isCapturing: false,
-              capturedSections: [],
-              lastScrollY: window.scrollY,
-              scrollThreshold: 100, // 滚动阈值
-              previewCanvas: null,
-              previewCtx: null,
-              selectedRect: selectedRect,
-              fixedNodes: [],
-              fixedNodesReady: false
-            };
-
-            // 初始化预览画布
-            const previewCanvasContainer = document.getElementById('preview-canvas-container');
-            const previewCanvas = document.createElement('canvas');
-            previewCanvas.style.cssText = 'width: 100%; display: none;';
-            previewCanvasContainer.appendChild(previewCanvas);
-            realtimeState.previewCanvas = previewCanvas;
-            realtimeState.previewCtx = previewCanvas.getContext('2d');
-
-            // 更新预览状态
-            const updatePreviewStatus = (message) => {
-              const statusEl = document.getElementById('preview-status');
-              if (statusEl) {
-                statusEl.textContent = message;
-              }
-            };
-
-            const collectFixedNodes = () => {
-              if (realtimeState.fixedNodesReady) return;
-              const nodes = Array.from(document.querySelectorAll('*'));
-              const rect = realtimeState.selectedRect;
-              const list = [];
-              for (const el of nodes) {
-                const st = getComputedStyle(el);
-                if (st.position !== 'fixed' && st.position !== 'sticky') continue;
-                const r = el.getBoundingClientRect();
-                if (r.width === 0 || r.height === 0) continue;
-                const hOverlap = r.right > rect.left && r.left < rect.left + rect.width;
-                const vOverlap = r.bottom > 0 && r.top < window.innerHeight;
-                if (hOverlap && vOverlap) list.push(el);
-              }
-              realtimeState.fixedNodes = list;
-              realtimeState.fixedNodesReady = true;
-            };
-
-            // 实时截图函数
-            const captureVisibleArea = async () => {
-              if (realtimeState.isCapturing) return;
-
-              realtimeState.isCapturing = true;
-              updatePreviewStatus('正在截图...');
-
-              // 临时隐藏UI
-              const hideUI = () => {
-                // 只有当真正遮挡了选区时才隐藏 controlPanel
-                if (controlPanel) {
-                  const rect = controlPanel.getBoundingClientRect();
-                  const captureRect = realtimeState.selectedRect;
-                  const isOverlap = !(rect.right < captureRect.left ||
-                    rect.left > captureRect.right ||
-                    rect.bottom < captureRect.top ||
-                    rect.top > captureRect.bottom);
-
-                  if (isOverlap) {
-                    controlPanel.style.visibility = 'hidden';
-                    realtimeState.controlHidden = true;
-                  } else {
-                    realtimeState.controlHidden = false;
-                  }
-                }
-
-                // 只有当 previewContainer 存在且可见时才隐藏它
-                // 但为了避免闪烁，我们尽量不隐藏它，除非它真的遮挡了视线
-                // 这里我们做个策略：如果它在截图区域内，就隐藏；否则不隐藏
-                if (previewContainer) {
-                  const previewRect = previewContainer.getBoundingClientRect();
-                  const captureRect = realtimeState.selectedRect;
-
-                  // 简单的碰撞检测
-                  const isOverlap = !(previewRect.right < captureRect.left ||
-                    previewRect.left > captureRect.right ||
-                    previewRect.bottom < captureRect.top ||
-                    previewRect.top > captureRect.bottom);
-
-                  if (isOverlap) {
-                    previewContainer.style.visibility = 'hidden';
-                    realtimeState.previewHidden = true;
-                  } else {
-                    realtimeState.previewHidden = false;
-                  }
-                }
-              };
-
-              const showUI = () => {
-                // container 保持隐藏
-                if (controlPanel && realtimeState.controlHidden) {
-                  controlPanel.style.visibility = 'visible';
-                }
-                if (previewContainer && realtimeState.previewHidden) {
-                  previewContainer.style.visibility = 'visible';
-                }
-              };
-
-              try {
-                // 1. 隐藏 UI
-                hideUI();
-
-                // 2. 等待渲染更新
-                await new Promise(r => requestAnimationFrame(() => setTimeout(r, 50)));
-
-                // 3. 发送消息截图
-                const response = await chrome.runtime.sendMessage({ type: 'captureTab' });
-
-                // 4. 恢复 UI
-                showUI();
-
-                if (!response || !response.dataUrl) {
-                  throw new Error(response?.error || '截图失败');
-                }
-
-                // 5. 处理截图
-                const img = new Image();
-                await new Promise((resolve, reject) => {
-                  img.onload = resolve;
-                  img.onerror = reject;
-                  img.src = response.dataUrl;
-                });
-
-                // 获取当前视口信息
-                const dpr = window.devicePixelRatio || 1;
-                const currentScrollY = window.scrollY;
-                const viewportHeight = window.innerHeight;
-
-                // 页面可视宽度（不含滚动条）
-                const clientWidth = document.documentElement.clientWidth;
-                // 窗口总宽度（含滚动条）
-                const innerWidth = window.innerWidth;
-
-                // 计算滚动条宽度
-                // 注意：captureVisibleTab 截取的图片通常包含滚动条
-                // 图片的物理宽度 = innerWidth * dpr
-
-                // 我们需要裁剪掉滚动条部分，只保留 clientWidth 对应的区域
-                // 源图像裁剪宽度
-                const sourceWidth = clientWidth * dpr;
-                const sourceHeight = viewportHeight * dpr;
-
-                // 调试信息
-                console.log('截图信息:', {
-                  imgSize: `${img.width}x${img.height}`,
-                  scrollY: currentScrollY,
-                  dpr: dpr,
-                  clientSize: `${clientWidth}x${viewportHeight}`,
-                  sourceSize: `${sourceWidth}x${sourceHeight}`
-                });
-
-                // 创建canvas裁剪
-                const canvas = document.createElement('canvas');
-
-                canvas.width = clientWidth;
-                canvas.height = viewportHeight;
-
-                const ctx = canvas.getContext('2d');
-
-                // 绘制参数：源图像（物理像素） -> 目标画布（逻辑像素）
-                // 源图像裁剪区域：(0, 0, sourceWidth, sourceHeight)
-                // 目标区域：(0, 0, clientWidth, viewportHeight)
-                // 这样既去除了滚动条，又保证了纵横比正确，不会被拉伸
-
-                ctx.drawImage(img,
-                  0, 0, sourceWidth, sourceHeight,
-                  0, 0, clientWidth, viewportHeight
-                );
-
-                // 存储截图数据
-                // 关键修正：确保裁剪后的canvas只包含selectedRect选区水平范围内的内容
-                // 虽然我们在最后一步才裁剪水平区域，但预览时如果显示全屏截图会造成困惑
-                // 因此这里我们先裁剪出用户选择的水平区域用于存储和预览
-
-                const selectedWidth = realtimeState.selectedRect.width;
-                const selectedLeft = realtimeState.selectedRect.left;
-
-                // 创建只包含选中区域的canvas
-                const selectedCanvas = document.createElement('canvas');
-                selectedCanvas.width = selectedWidth;
-                selectedCanvas.height = viewportHeight;
-
-                const selectedCtx = selectedCanvas.getContext('2d');
-                selectedCtx.drawImage(canvas,
-                  selectedLeft, 0, selectedWidth, viewportHeight,
-                  0, 0, selectedWidth, viewportHeight
-                );
-
-                const sectionData = {
-                  canvas: selectedCanvas, // 使用已水平裁剪的canvas
-                  scrollY: currentScrollY,
-                  height: viewportHeight,
-                  scale: 1,
-                  timestamp: Date.now()
-                };
-
-                realtimeState.capturedSections.push(sectionData);
-
-                // 更新预览
-                // 确保 previewContainer 可见，并强制重绘
-                if (previewContainer) {
-                  previewContainer.style.visibility = 'visible';
-                  // 强制布局更新
-                  void previewContainer.offsetHeight;
-                }
-                updatePreview(sectionData);
-                updatePreviewStatus(`已截图 ${realtimeState.capturedSections.length} 个区域`);
-
-              } catch (err) {
-                console.error('实时截图失败:', err);
-                // 确保UI恢复
-                showUI();
-                updatePreviewStatus('截图失败，请重试');
-              } finally {
-                realtimeState.isCapturing = false;
-              }
-            };
-
-            // 更新预览显示
-            const updatePreview = (sectionData) => {
-              const { canvas, scrollY } = sectionData;
-
-              // 显示预览画布
-              const placeholder = previewCanvasContainer.querySelector('div');
-              if (placeholder) {
-                placeholder.style.display = 'none';
-              }
-              previewCanvas.style.display = 'block';
-
-              // 计算预览尺寸
-              const previewWidth = 280; // 预览容器宽度
-              const scale = previewWidth / canvas.width;
-              const previewHeight = canvas.height * scale;
-
-              // 设置预览画布尺寸
-              const totalHeight = previewHeight * realtimeState.capturedSections.length;
-              if (previewCanvas.width < previewWidth || previewCanvas.height < totalHeight) {
-                previewCanvas.width = previewWidth;
-                previewCanvas.height = totalHeight;
-
-                // Canvas 尺寸改变会清空内容，需要重绘所有已捕获的区域
-                realtimeState.capturedSections.forEach((section, index) => {
-                  const y = index * previewHeight;
-                  realtimeState.previewCtx.drawImage(section.canvas, 0, y, previewWidth, previewHeight);
-                });
-              } else {
-                // 尺寸没变，只绘制最新的一张
-                const yPos = (realtimeState.capturedSections.length - 1) * previewHeight;
-                realtimeState.previewCtx.drawImage(canvas, 0, yPos, previewWidth, previewHeight);
-              }
-            };
-
-            // 防抖函数
-            const debounce = (fn, delay) => {
-              let timer = null;
-              return (...args) => {
-                if (timer) clearTimeout(timer);
-                timer = setTimeout(() => {
-                  fn(...args);
-                }, delay);
-              };
-            };
-
-            // 滚动事件监听器 (防抖 300ms)
-            const scrollHandler = debounce(() => {
-              const currentScrollY = window.scrollY;
-              // 只有当滚动距离超过一定阈值才触发截图，避免微小抖动
-              // 且必须是向下滚动（或者首次）
-              // 但考虑到用户可能往回滚，我们只根据位置差判断
-              const scrollDiff = Math.abs(currentScrollY - realtimeState.lastScrollY);
-
-              if (scrollDiff > realtimeState.scrollThreshold) {
-                realtimeState.lastScrollY = currentScrollY;
-                captureVisibleArea();
-              }
-            }, 300);
-
-            // ESC键监听
-            const keyHandler = (e) => {
-              if (e.key === 'Escape') {
-                finishRealtimeCapture();
-              }
-            };
-
-            // 完成实时截图
-            const finishRealtimeCapture = async () => {
-              // 移除事件监听器
-              window.removeEventListener('scroll', scrollHandler);
-              document.removeEventListener('keydown', keyHandler);
-
-              // 移除UI元素
-              if (previewContainer.parentNode) {
-                previewContainer.parentNode.removeChild(previewContainer);
-              }
-
-              tipText.textContent = '正在生成最终长截图...';
-
-              try {
-                if (realtimeState.capturedSections.length === 0) {
-                  throw new Error('没有捕获到任何截图区域');
-                }
-
-                // 按滚动位置排序
-                realtimeState.capturedSections.sort((a, b) => a.scrollY - b.scrollY);
-
-                // 创建最终画布
-                const selectedWidth = realtimeState.selectedRect.width;
-                const startY = Math.min(...realtimeState.capturedSections.map(s => s.scrollY));
-                const endY = Math.max(...realtimeState.capturedSections.map(s => s.scrollY + s.height));
-                const finalHeight = Math.max(1, Math.round(endY - startY));
-
-                const finalCanvas = document.createElement('canvas');
-                finalCanvas.width = selectedWidth;
-                finalCanvas.height = finalHeight;
-
-                const ctx = finalCanvas.getContext('2d');
-
-                // 拼接所有截图
-                let prevBottom = -Infinity;
-                for (const section of realtimeState.capturedSections) {
-                  const { canvas, scrollY, height, scale } = section;
-                  const s = scale || (canvas.width / Math.max(
-                    document.body.scrollWidth,
-                    document.body.offsetWidth,
-                    document.documentElement.clientWidth,
-                    document.documentElement.scrollWidth,
-                    document.documentElement.offsetWidth
-                  ));
-                  const destYBase = Math.round(scrollY - startY);
-                  let destY = destYBase;
-                  let destH = height;
-
-                  // 注意：现在的canvas已经是裁剪过的 selectedCanvas，宽度就是selectedWidth
-                  // 所以 srcX 应该是0，srcW 应该是 canvas.width
-                  // 我们不需要再根据 selectedRect.left 来偏移，因为已经裁过了
-
-                  let srcX = 0;
-                  let srcY = 0;
-                  let srcW = canvas.width;
-                  let srcH = Math.round(height * s);
-
-                  if (prevBottom > destY) {
-                    const overlap = prevBottom - destY;
-                    // 如果重叠小于1像素，可能是计算误差，忽略
-                    if (overlap > 1) {
-                      const clipped = Math.min(overlap, destH);
-                      destY += clipped;
-                      destH -= clipped;
-                      srcY += Math.round(clipped * s);
-                      srcH -= Math.round(clipped * s);
-                    }
-                  }
-
-                  if (destH > 0 && srcH > 0 && canvas.width > 0 && canvas.height > 0) {
-                    try {
-                      ctx.drawImage(canvas, srcX, srcY, srcW, srcH, 0, destY, selectedWidth, destH);
-                    } catch (drawErr) {
-                      console.error('绘制失败:', drawErr);
-                      ctx.fillStyle = '#ffffff';
-                      ctx.fillRect(0, destY, selectedWidth, destH);
-                    }
-                  }
-
-                  prevBottom = Math.max(prevBottom, destY + destH);
-                }
-
-                // 转换并复制
-                finalCanvas.toBlob(async (blob) => {
-                  let copied = false;
-
-                  // 方案1：尝试使用 Clipboard API
-                  if (typeof ClipboardItem !== 'undefined') {
-                    try {
-                      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                      copied = true;
-                      showSuccessMessage(selectedWidth, finalHeight);
-                      return;
-                    } catch (e) {
-                      console.error('Clipboard API 失败:', e);
-                    }
-                  }
-
-                  // 方案2：尝试通过扩展 background
-                  try {
-                    const dataUrl = finalCanvas.toDataURL('image/png');
-                    chrome.runtime.sendMessage({
-                      type: 'writeToClipboard', // 修正 action 为 type，与 background.js 保持一致
-                      dataType: 'image',
-                      dataUrl: dataUrl
-                    }, (response) => {
-                      if (response && response.success) {
-                        showSuccessMessage(selectedWidth, finalHeight);
-                      } else {
-                        // 如果 background 写入也失败，则降级为下载
-                        console.warn('Background 写入失败，降级为下载:', response?.error);
-                        showErrorMessage(blob, response?.error || '复制失败，请下载');
-                      }
-                    });
-                  } catch (e) {
-                    console.error('Background 写入失败:', e);
-                    showErrorMessage(blob, e.message);
-                  }
-                });
-
-                // 显示成功消息
-                function showSuccessMessage(width, height) {
-                  document.body.removeChild(container);
-                  document.body.removeChild(controlPanel);
-
-                  const successToast = document.createElement('div');
-                  successToast.style.cssText = `
-                  position: fixed;
-                  top: 60px;
-                  left: 50%;
-                  transform: translateX(-50%);
-                  background: #52c41a;
-                  color: white;
-                  padding: 12px 24px;
-                  border-radius: 6px;
-                  font-size: 14px;
-                  font-weight: 500;
-                  z-index: 1000000000;
-                  box-shadow: 0 4px 12px rgba(82, 196, 26, 0.3);
-                `;
-                  successToast.textContent = `✅ 实时滚动截图成功 (${Math.round(width)} × ${Math.round(height)} 像素)`;
-                  document.body.appendChild(successToast);
-
-                  setTimeout(() => {
-                    if (successToast.parentNode) {
-                      successToast.parentNode.removeChild(successToast);
-                    }
-                  }, 3000);
-                }
-
-                // 显示错误消息
-                function showErrorMessage(blob, errorMessage) {
-                  document.body.removeChild(container);
-                  document.body.removeChild(controlPanel);
-
-                  const errorToast = document.createElement('div');
-                  errorToast.style.cssText = `
-                  position: fixed;
-                  top: 60px;
-                  left: 50%;
-                  transform: translateX(-50%);
-                  background: #ff4d4f;
-                  color: white;
-                  padding: 12px 24px;
-                  border-radius: 6px;
-                  font-size: 14px;
-                  font-weight: 500;
-                  z-index: 1000000000;
-                  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
-                  text-align: center;
-                  max-width: 300px;
-                `;
-
-                  errorToast.innerHTML = `
-                  <div>📋 复制到剪贴板失败</div>
-                  <div style="font-size: 12px; margin-top: 4px; opacity: 0.9;">${errorMessage}</div>
-                  ${blob ? `<button id="downloadBtn" style="
-                    margin-top: 8px;
-                    padding: 6px 12px;
-                    background: white;
-                    color: #ff4d4f;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    font-size: 12px;
-                    font-weight: 500;
-                  ">📥 下载截图</button>` : ''}
-                `;
-
-                  document.body.appendChild(errorToast);
-
-                  if (blob && document.getElementById('downloadBtn')) {
-                    document.getElementById('downloadBtn').onclick = () => {
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `realtime-screenshot-${new Date().getTime()}.png`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                      document.body.removeChild(errorToast);
-                    };
-                  }
-
-                  setTimeout(() => {
-                    if (errorToast.parentNode) {
-                      errorToast.parentNode.removeChild(errorToast);
-                    }
-                  }, 5000);
-                }
-
-              } catch (err) {
-                console.error('生成最终截图失败:', err);
-                alert('截图失败: ' + err.message);
-
-                confirmBtn.disabled = false;
-                confirmBtn.textContent = '✅ 确认截图';
-                cancelBtn.disabled = false;
-                tipText.textContent = '截图失败，请重试';
-              }
-            };
-
-            // 绑定事件
-            document.getElementById('finishRealtimeBtn').onclick = finishRealtimeCapture;
-            window.addEventListener('scroll', scrollHandler);
-            document.addEventListener('keydown', keyHandler);
-
-            // 开始实时截图
-            updatePreviewStatus('开始滚动以触发截图...');
-            realtimeState.lastScrollY = window.scrollY;
-
-            // 立即捕获第一张
-            captureVisibleArea();
+          window.addEventListener('scroll', handleScroll);
+          doCapture();
+
+          document.getElementById('p-done').onclick = async () => {
+            window.removeEventListener('scroll', handleScroll);
+            const final = document.createElement('canvas');
+            const sorted = state.frames.sort((a, b) => a.y - b.y);
+            const minY = state.startY, maxY = sorted[sorted.length - 1].y + state.vh;
+
+            final.width = state.rect.w;
+            final.height = maxY - minY;
+            const fCtx = final.getContext('2d');
+
+            // 💡 采用绝对坐标绘制，彻底解决文字重叠
+            sorted.forEach(f => {
+              fCtx.drawImage(f.cvs, 0, f.y - minY);
+            });
+
+            final.toBlob(async blob => {
+              const item = new ClipboardItem({ 'image/png': blob });
+              await navigator.clipboard.write([item]);
+              preRoot.remove(); overlay.remove(); panel.remove();
+              alert("✅ 长截图已复制！");
+            });
           };
-
-          // 取消操作
-          cancelBtn.onclick = () => {
-            document.body.removeChild(container);
-            document.body.removeChild(controlPanel);
-          };
-
-          // 初始状态：禁用确认按钮
-          confirmBtn.disabled = true;
-          confirmBtn.style.opacity = '0.5';
-          confirmBtn.style.cursor = 'not-allowed';
-
-          // 添加到页面
-          document.body.appendChild(container);
-          document.body.appendChild(controlPanel);
-        }
-      });
-    } catch (e) {
-      console.error('注入失败:', e);
-      show("截图失败");
-    }
+        };
+        document.getElementById('ss-close').onclick = () => { overlay.remove(); panel.remove(); };
+      }
+    });
   };
 }
 
