@@ -150,18 +150,10 @@ if ($("scrollScreenshot")) {
         func: async () => {
           if (document.getElementById('screenshot-select-overlay')) return;
 
+          // --- 1. 完全保留你的定位遮罩逻辑 ---
           const overlay = document.createElement('div');
           overlay.id = 'screenshot-select-overlay';
-          overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.3);
-            z-index: 999999999;
-            cursor: crosshair;
-          `;
+          overlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); z-index: 999999999; cursor: crosshair;`;
 
           let startX, startY, selectionBox;
 
@@ -169,12 +161,7 @@ if ($("scrollScreenshot")) {
             startX = e.clientX;
             startY = e.clientY;
             selectionBox = document.createElement('div');
-            selectionBox.style.cssText = `
-              position: absolute;
-              border: 2px solid #2d8cf0;
-              background: rgba(45,140,240,0.1);
-              pointer-events: none;
-            `;
+            selectionBox.style.cssText = `position: absolute; border: 2px solid #2d8cf0; background: rgba(45,140,240,0.1); pointer-events: none; z-index: 1000000000;`;
             document.body.appendChild(selectionBox);
           };
 
@@ -193,91 +180,104 @@ if ($("scrollScreenshot")) {
           overlay.onmouseup = async () => {
             if (!selectionBox) return;
             const rect = selectionBox.getBoundingClientRect();
-            document.body.removeChild(selectionBox);
-            document.body.removeChild(overlay);
 
-            if (rect.width < 10 || rect.height < 10) return;
-
-            // 从storage获取截图数据
-            const result = await new Promise(r => chrome.storage.local.get(['screenshotData'], r));
-            const dataUrl = result?.screenshotData;
-
-            if (!dataUrl) {
-              alert('截图失败：没有截图数据');
+            // 校验选区大小
+            if (rect.width < 10 || rect.height < 10) {
+              document.body.removeChild(selectionBox);
+              document.body.removeChild(overlay);
               return;
             }
 
-            // 用canvas裁剪图片
-            const img = new Image();
-            img.src = dataUrl;
+            // --- 2. 这里的逻辑升级：进入手动拼接预览状态 ---
+            overlay.style.background = "transparent"; // 选完后变透明，不遮挡内容
+            overlay.style.pointerEvents = "none"; // 允许鼠标滚网页内容
 
-            await new Promise(r => img.onload = r);
+            // 创建预览面板
+            const panel = document.createElement('div');
+            panel.style.cssText = `position: fixed; right: 20px; top: 20px; width: 180px; height: 500px; background: white; border: 2px solid #2d8cf0; z-index: 1000000001; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; pointer-events: auto;`;
+            panel.innerHTML = `
+            <div style="background:#2d8cf0; color:white; padding:8px; font-size:12px; text-align:center;">手动拼长图</div>
+            <div id="stitch-preview" style="flex:1; overflow-y:auto; background:#eee; padding:5px;"><canvas id="stitch-canvas" style="width:100%;"></canvas></div>
+            <div style="padding:10px; display:flex; flex-direction:column; gap:8px;">
+                <button id="btn-snap" style="padding:8px; background:#2d8cf0; color:white; border:none; cursor:pointer; border-radius:4px; font-weight:bold;">📸 捕获当前帧</button>
+                <div style="display:flex; gap:5px;">
+                   <button id="btn-save" style="flex:1; padding:6px; background:#52c41a; color:white; border:none; cursor:pointer; border-radius:4px;">完成保存</button>
+                   <button id="btn-cancel" style="flex:1; padding:6px; background:#ff4d4f; color:white; border:none; cursor:pointer; border-radius:4px;">取消</button>
+                </div>
+                <p style="font-size:10px; color:#999; margin:0; text-align:center;">滚一下对话，点一下捕获</p>
+            </div>`;
+            document.body.appendChild(panel);
 
-            const canvas = document.createElement('canvas');
-            const scale = img.width / window.innerWidth;
-            canvas.width = rect.width * scale;
-            canvas.height = rect.height * scale;
-
+            const canvas = document.getElementById('stitch-canvas');
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(img,
-              rect.left * scale, rect.top * scale,
-              rect.width * scale, rect.height * scale,
-              0, 0, canvas.width, canvas.height
-            );
+            const mainCanvas = document.createElement('canvas'); // 存储长图的真实画布
+            const mainCtx = mainCanvas.getContext('2d');
 
-            canvas.toBlob(async (blob) => {
-              let copied = false;
+            let frames = [];
+            const deviceScale = window.devicePixelRatio || 1;
 
-              if (typeof ClipboardItem !== 'undefined') {
-                try {
-                  await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                  copied = true;
-                } catch (e) {
-                  console.error('Clipboard API 失败:', e);
-                }
-              }
+            const captureFrame = async () => {
+              // 💡 解决闪烁：使用 visibility 瞬间隐藏
+              const hideList = [selectionBox, panel, overlay];
+              hideList.forEach(el => el.style.visibility = 'hidden');
 
-              if (!copied) {
-                try {
-                  const dataUrl = canvas.toDataURL('image/png');
-                  chrome.runtime.sendMessage({
-                    action: 'writeToClipboard',
-                    dataType: 'image',
-                    dataUrl: dataUrl
-                  }, (response) => {
-                    if (!response || !response.success) {
-                      console.error('Background 写入失败:', response?.error);
-                    }
-                  });
-                } catch (e) {
-                  console.error('消息发送失败:', e);
-                }
-              }
+              await new Promise(r => setTimeout(r, 100)); // 给百度一点渲染宽容度
 
-              const success = document.createElement('div');
-              success.style.cssText = `
-                position: fixed;
-                top: 60px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: #52c41a;
-                color: white;
-                padding: 10px 20px;
-                border-radius: 4px;
-                font-size: 14px;
-                z-index: 1000000;
-              `;
-              success.textContent = '截图成功，已复制到剪贴板';
-              document.body.appendChild(success);
+              const res = await chrome.runtime.sendMessage({ action: 'captureTab' }); // 假设 background 已有截图监听
+              // 如果 background 还是把截图存 storage，则：
+              // const result = await new Promise(r => chrome.storage.local.get(['screenshotData'], r));
+              // const dataUrl = result?.screenshotData;
+              const dataUrl = res?.dataUrl || (await new Promise(r => chrome.storage.local.get(['screenshotData'], r))).screenshotData;
 
-              setTimeout(() => document.body.removeChild(success), 3000);
-            });
-          };
+              hideList.forEach(el => el.style.visibility = 'visible');
 
-          overlay.onclick = (e) => {
-            if (e.target === overlay) {
+              if (!dataUrl) return;
+
+              const img = new Image();
+              img.src = dataUrl;
+              await new Promise(r => img.onload = r);
+
+              // 你的核心裁切逻辑
+              const drawScale = img.width / window.innerWidth;
+              const frameCanvas = document.createElement('canvas');
+              frameCanvas.width = rect.width * drawScale;
+              frameCanvas.height = rect.height * drawScale;
+              const fCtx = frameCanvas.getContext('2d');
+              fCtx.drawImage(img, rect.left * drawScale, rect.top * drawScale, rect.width * drawScale, rect.height * drawScale, 0, 0, frameCanvas.width, frameCanvas.height);
+
+              frames.push(frameCanvas);
+
+              // 垂直拼接
+              mainCanvas.width = frameCanvas.width;
+              mainCanvas.height = frameCanvas.height * frames.length;
+              frames.forEach((f, i) => {
+                mainCtx.drawImage(f, 0, i * frameCanvas.height);
+              });
+
+              // 更新预览
+              canvas.width = 160;
+              canvas.height = mainCanvas.height * (160 / mainCanvas.width);
+              ctx.drawImage(mainCanvas, 0, 0, canvas.width, canvas.height);
+              document.getElementById('stitch-preview').scrollTop = 99999;
+            };
+
+            // 按钮点击事件
+            document.getElementById('btn-snap').onclick = captureFrame;
+            document.getElementById('btn-cancel').onclick = () => {
+              document.body.removeChild(panel);
+              document.body.removeChild(selectionBox);
               document.body.removeChild(overlay);
-            }
+            };
+            document.getElementById('btn-save').onclick = () => {
+              mainCanvas.toBlob(async (blob) => {
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                alert('长截图已拼合并复制！');
+                document.getElementById('btn-cancel').onclick();
+              });
+            };
+
+            // 自动捕获第一帧
+            await captureFrame();
           };
 
           document.body.appendChild(overlay);
