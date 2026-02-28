@@ -50,32 +50,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // 使用扩展的权限写入剪贴板
     if (message.dataType === 'image') {
-      // 将base64数据转换为blob
-      fetch(message.dataUrl)
-        .then(response => response.blob())
-        .then(blob => {
-          // 创建ClipboardItem
-          const clipboardItem = new ClipboardItem({
-            'image/png': blob
-          });
-          
-          // 写入剪贴板
-          navigator.clipboard.write([clipboardItem])
-            .then(() => {
-              console.log('通过扩展权限成功写入剪贴板');
-              sendResponse({ success: true });
-            })
-            .catch(error => {
-              console.error('扩展权限写入剪贴板失败:', error);
-              sendResponse({ success: false, error: error.message });
+      if (typeof ClipboardItem === 'undefined') {
+        console.error('Background: ClipboardItem 不可用');
+        sendResponse({ success: false, error: 'Background: ClipboardItem 不可用' });
+      } else {
+        fetch(message.dataUrl)
+          .then(response => response.blob())
+          .then(blob => {
+            const clipboardItem = new ClipboardItem({
+              'image/png': blob
             });
-        })
-        .catch(error => {
-          console.error('数据转换失败:', error);
-          sendResponse({ success: false, error: error.message });
-        });
-      
-      return true; // 异步响应
+            
+            navigator.clipboard.write([clipboardItem])
+              .then(() => {
+                console.log('通过扩展权限成功写入剪贴板');
+                sendResponse({ success: true });
+              })
+              .catch(error => {
+                console.error('扩展权限写入剪贴板失败:', error);
+                sendResponse({ success: false, error: error.message });
+              });
+          })
+          .catch(error => {
+            console.error('数据转换失败:', error);
+            sendResponse({ success: false, error: error.message });
+          });
+        
+        return true;
+      }
     }
   }
 });
