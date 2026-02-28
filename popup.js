@@ -615,15 +615,53 @@ if ($("scrollCapture")) {
 
               // 临时隐藏UI
               const hideUI = () => {
-                // container 已在进入模式时隐藏，无需再处理
-                if (controlPanel) controlPanel.style.visibility = 'hidden';
-                if (previewContainer) previewContainer.style.visibility = 'hidden';
+                // 只有当真正遮挡了选区时才隐藏 controlPanel
+                if (controlPanel) {
+                  const rect = controlPanel.getBoundingClientRect();
+                  const captureRect = realtimeState.selectedRect;
+                  const isOverlap = !(rect.right < captureRect.left ||
+                    rect.left > captureRect.right ||
+                    rect.bottom < captureRect.top ||
+                    rect.top > captureRect.bottom);
+
+                  if (isOverlap) {
+                    controlPanel.style.visibility = 'hidden';
+                    realtimeState.controlHidden = true;
+                  } else {
+                    realtimeState.controlHidden = false;
+                  }
+                }
+
+                // 只有当 previewContainer 存在且可见时才隐藏它
+                // 但为了避免闪烁，我们尽量不隐藏它，除非它真的遮挡了视线
+                // 这里我们做个策略：如果它在截图区域内，就隐藏；否则不隐藏
+                if (previewContainer) {
+                  const previewRect = previewContainer.getBoundingClientRect();
+                  const captureRect = realtimeState.selectedRect;
+
+                  // 简单的碰撞检测
+                  const isOverlap = !(previewRect.right < captureRect.left ||
+                    previewRect.left > captureRect.right ||
+                    previewRect.bottom < captureRect.top ||
+                    previewRect.top > captureRect.bottom);
+
+                  if (isOverlap) {
+                    previewContainer.style.visibility = 'hidden';
+                    realtimeState.previewHidden = true;
+                  } else {
+                    realtimeState.previewHidden = false;
+                  }
+                }
               };
 
               const showUI = () => {
                 // container 保持隐藏
-                if (controlPanel) controlPanel.style.visibility = 'visible';
-                if (previewContainer) previewContainer.style.visibility = 'visible';
+                if (controlPanel && realtimeState.controlHidden) {
+                  controlPanel.style.visibility = 'visible';
+                }
+                if (previewContainer && realtimeState.previewHidden) {
+                  previewContainer.style.visibility = 'visible';
+                }
               };
 
               try {
@@ -670,7 +708,14 @@ if ($("scrollCapture")) {
                 const sourceWidth = clientWidth * dpr;
                 const sourceHeight = viewportHeight * dpr;
 
-                console.log('截图完成，尺寸:', img.width, 'x', img.height, 'scrollY:', currentScrollY, 'dpr:', dpr);
+                // 调试信息
+                console.log('截图信息:', {
+                  imgSize: `${img.width}x${img.height}`,
+                  scrollY: currentScrollY,
+                  dpr: dpr,
+                  clientSize: `${clientWidth}x${viewportHeight}`,
+                  sourceSize: `${sourceWidth}x${sourceHeight}`
+                });
 
                 // 创建canvas裁剪
                 const canvas = document.createElement('canvas');
@@ -691,24 +736,43 @@ if ($("scrollCapture")) {
                 );
 
                 // 存储截图数据
+                // 关键修正：确保裁剪后的canvas只包含selectedRect选区水平范围内的内容
+                // 虽然我们在最后一步才裁剪水平区域，但预览时如果显示全屏截图会造成困惑
+                // 因此这里我们先裁剪出用户选择的水平区域用于存储和预览
+
+                const selectedWidth = realtimeState.selectedRect.width;
+                const selectedLeft = realtimeState.selectedRect.left;
+
+                // 创建只包含选中区域的canvas
+                const selectedCanvas = document.createElement('canvas');
+                selectedCanvas.width = selectedWidth;
+                selectedCanvas.height = viewportHeight;
+
+                const selectedCtx = selectedCanvas.getContext('2d');
+                selectedCtx.drawImage(canvas,
+                  selectedLeft, 0, selectedWidth, viewportHeight,
+                  0, 0, selectedWidth, viewportHeight
+                );
+
                 const sectionData = {
-                  canvas: canvas,
+                  canvas: selectedCanvas, // 使用已水平裁剪的canvas
                   scrollY: currentScrollY,
                   height: viewportHeight,
-                  scale: 1, // 已经是逻辑像素比例
+                  scale: 1,
                   timestamp: Date.now()
                 };
 
                 realtimeState.capturedSections.push(sectionData);
 
                 // 更新预览
-                // 确保 previewContainer 可见，以便 updatePreview 能正常工作
-                if (previewContainer) previewContainer.style.visibility = 'visible';
+                // 确保 previewContainer 可见，并强制重绘
+                if (previewContainer) {
+                  previewContainer.style.visibility = 'visible';
+                  // 强制布局更新
+                  void previewContainer.offsetHeight;
+                }
                 updatePreview(sectionData);
                 updatePreviewStatus(`已截图 ${realtimeState.capturedSections.length} 个区域`);
-                // 更新完预览后，根据 showUI 的逻辑，它应该保持可见（除非在下一次截图前被 hideUI 隐藏）
-                // 但为了避免闪烁，我们在下一次 hideUI 前都保持它可见
-                // 注意：在 finishRealtimeCapture 时会移除它
 
               } catch (err) {
                 console.error('实时截图失败:', err);
@@ -737,14 +801,21 @@ if ($("scrollCapture")) {
               const previewHeight = canvas.height * scale;
 
               // 设置预览画布尺寸
-              if (previewCanvas.width < previewWidth || previewCanvas.height < (previewHeight * realtimeState.capturedSections.length)) {
+              const totalHeight = previewHeight * realtimeState.capturedSections.length;
+              if (previewCanvas.width < previewWidth || previewCanvas.height < totalHeight) {
                 previewCanvas.width = previewWidth;
-                previewCanvas.height = previewHeight * realtimeState.capturedSections.length;
-              }
+                previewCanvas.height = totalHeight;
 
-              // 绘制当前截图到预览
-              const yPos = (realtimeState.capturedSections.length - 1) * previewHeight;
-              realtimeState.previewCtx.drawImage(canvas, 0, yPos, previewWidth, previewHeight);
+                // Canvas 尺寸改变会清空内容，需要重绘所有已捕获的区域
+                realtimeState.capturedSections.forEach((section, index) => {
+                  const y = index * previewHeight;
+                  realtimeState.previewCtx.drawImage(section.canvas, 0, y, previewWidth, previewHeight);
+                });
+              } else {
+                // 尺寸没变，只绘制最新的一张
+                const yPos = (realtimeState.capturedSections.length - 1) * previewHeight;
+                realtimeState.previewCtx.drawImage(canvas, 0, yPos, previewWidth, previewHeight);
+              }
             };
 
             // 防抖函数
@@ -826,9 +897,14 @@ if ($("scrollCapture")) {
                   const destYBase = Math.round(scrollY - startY);
                   let destY = destYBase;
                   let destH = height;
-                  let srcX = Math.round(realtimeState.selectedRect.left * s);
+
+                  // 注意：现在的canvas已经是裁剪过的 selectedCanvas，宽度就是selectedWidth
+                  // 所以 srcX 应该是0，srcW 应该是 canvas.width
+                  // 我们不需要再根据 selectedRect.left 来偏移，因为已经裁过了
+
+                  let srcX = 0;
                   let srcY = 0;
-                  let srcW = Math.round(realtimeState.selectedRect.width * s);
+                  let srcW = canvas.width;
                   let srcH = Math.round(height * s);
 
                   if (prevBottom > destY) {
@@ -876,13 +952,15 @@ if ($("scrollCapture")) {
                   try {
                     const dataUrl = finalCanvas.toDataURL('image/png');
                     chrome.runtime.sendMessage({
-                      action: 'writeToClipboard',
+                      type: 'writeToClipboard', // 修正 action 为 type，与 background.js 保持一致
                       dataType: 'image',
                       dataUrl: dataUrl
                     }, (response) => {
                       if (response && response.success) {
                         showSuccessMessage(selectedWidth, finalHeight);
                       } else {
+                        // 如果 background 写入也失败，则降级为下载
+                        console.warn('Background 写入失败，降级为下载:', response?.error);
                         showErrorMessage(blob, response?.error || '复制失败，请下载');
                       }
                     });
