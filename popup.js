@@ -314,14 +314,12 @@ if ($("scrollCapture")) {
 
         const hint = document.createElement('div');
         hint.style.cssText = `position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:10px 24px; border-radius:30px; font-size:14px; z-index:2147483647; pointer-events:none;`;
-        hint.innerText = "请框选区域，选区将固定在屏幕上，请向下滚动网页内容";
+        hint.innerText = "请框选区域，松手后滚动网页";
         document.body.append(mask, hint);
 
         let isDrawing = false, sX, sY, rect = null;
         mask.onmousedown = (e) => {
-          isDrawing = true;
-          sX = e.clientX;
-          sY = e.clientY;
+          isDrawing = true; sX = e.clientX; sY = e.clientY;
           selection.style.display = 'block';
           document.body.appendChild(selection);
         };
@@ -331,16 +329,16 @@ if ($("scrollCapture")) {
           const w = Math.abs(e.clientX - sX), h = Math.abs(e.clientY - sY);
           selection.style.left = x + 'px'; selection.style.top = y + 'px';
           selection.style.width = w + 'px'; selection.style.height = h + 'px';
-          rect = { x, y, w, h }; // 这里的坐标是相对于视口(viewport)的固定坐标
+          rect = { x, y, w, h };
         };
 
         mask.onmouseup = () => { if (rect && rect.w > 20) startCapture(); };
 
         const startCapture = async () => {
-          hint.innerText = "📸 请缓慢向下滚动网页内容，完成后点击下方 ✓";
+          hint.innerText = "📸 滚动捕获中... 结束后点击右下方 ✓";
           mask.style.pointerEvents = 'none';
 
-          // 2. 飞书式边缘预览 (Fixed，紧贴选区)
+          // 2. 侧边预览 (紧贴选区边缘)
           const isRightSpace = (window.innerWidth - rect.x - rect.w) > 140;
           const sideView = document.createElement('div');
           sideView.style.cssText = `position:fixed; 
@@ -352,15 +350,25 @@ if ($("scrollCapture")) {
             border: 1px solid #2d8cf0; transition: opacity 0.1s;`;
           sideView.innerHTML = `<div id="p-box" style="flex:1; overflow-y:auto; background:#f5f5f5;"><canvas id="p-cvs" style="width:100%;"></canvas></div>`;
 
+          // 3. 操作按钮：固定在选区【可视区域之外】的右下角
           const ctrl = document.createElement('div');
+          // 计算逻辑：尝试放在 rect.x + rect.w（右边缘），如果没空间了就向左挤
+          let btnLeft = rect.x + rect.w + 10;
+          if (btnLeft + 100 > window.innerWidth) { btnLeft = window.innerWidth - 110; }
+
+          // 尝试放在 rect.y + rect.h（下边缘），如果没空间了就向上挤
+          let btnTop = rect.y + rect.h + 10;
+          if (btnTop + 60 > window.innerHeight) { btnTop = window.innerHeight - 70; }
+
           ctrl.style.cssText = `position:fixed; 
-            left: ${rect.x + rect.w - 100}px; top: ${rect.y + rect.h + 10}px; 
-            display: flex; gap: 12px; z-index: 2147483647; padding: 8px; 
-            background: white; border-radius: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); 
-            transition: opacity 0.1s;`;
+            left: ${btnLeft}px; 
+            top: ${btnTop}px; 
+            display: flex; gap: 10px; z-index: 2147483647; padding: 8px; 
+            background: white; border-radius: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); 
+            transition: opacity 0.1s; border: 1px solid #eee;`;
           ctrl.innerHTML = `
-            <button id="p-ok" style="width:36px; height:36px; border-radius:50%; border:none; background:#2d8cf0; color:white; cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center;">✓</button>
-            <button id="p-no" style="width:36px; height:36px; border-radius:50%; border:none; background:#f0f0f0; color:#666; cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center;">✕</button>
+            <button id="p-ok" style="width:38px; height:38px; border-radius:50%; border:none; background:#2d8cf0; color:white; cursor:pointer; font-size:20px; display:flex; align-items:center; justify-content:center;">✓</button>
+            <button id="p-no" style="width:38px; height:38px; border-radius:50%; border:none; background:#f0f0f0; color:#666; cursor:pointer; font-size:20px; display:flex; align-items:center; justify-content:center;">✕</button>
           `;
           document.body.append(sideView, ctrl);
 
@@ -381,7 +389,6 @@ if ($("scrollCapture")) {
             if (state.isCapturing) return;
             state.isCapturing = true;
 
-            // 隐藏 UI 防止截入
             const ui = [sideView, ctrl, hint, selection, mask];
             ui.forEach(el => el.style.opacity = '0');
 
@@ -403,20 +410,12 @@ if ($("scrollCapture")) {
 
               if (isFirst) {
                 frameCvs.height = rect.h;
-                // 第一帧截取当前选区框内的全部内容
                 frameCvs.getContext('2d').drawImage(img, rect.x * state.dpr * scale, rect.y * state.dpr * scale, rect.w * state.dpr * scale, rect.h * state.dpr * scale, 0, 0, rect.w, rect.h);
               } else {
-                // 续帧：只截取视口底部由于滚动新露出来的增量部分
                 const deltaY = Math.min(curY - state.lastY, rect.h);
                 if (deltaY <= 2) { state.isCapturing = false; return; }
-
                 frameCvs.height = deltaY;
-                // 从视口底部截取 deltaY 高度的像素
-                frameCvs.getContext('2d').drawImage(img,
-                  rect.x * state.dpr * scale, (rect.y + rect.h - deltaY) * state.dpr * scale,
-                  rect.w * state.dpr * scale, deltaY * state.dpr * scale,
-                  0, 0, rect.w, deltaY
-                );
+                frameCvs.getContext('2d').drawImage(img, rect.x * state.dpr * scale, (rect.y + rect.h - deltaY) * state.dpr * scale, rect.w * state.dpr * scale, deltaY * state.dpr * scale, 0, 0, rect.w, deltaY);
               }
 
               state.frames.push({ cvs: frameCvs });
@@ -437,7 +436,7 @@ if ($("scrollCapture")) {
           const onScroll = () => {
             clearTimeout(state.timer);
             state.timer = setTimeout(() => {
-              if (window.scrollY - state.lastY > 40) doCapture();
+              if (window.scrollY - state.lastY > 45) doCapture();
             }, 150);
           };
 
@@ -451,7 +450,7 @@ if ($("scrollCapture")) {
               const item = new ClipboardItem({ 'image/png': blob });
               await navigator.clipboard.write([item]);
               cleanup();
-              alert("✅ 精准长截图已复制到剪贴板");
+              alert("✅ 截图成功！");
             });
           };
           document.getElementById('p-no').onclick = cleanup;
