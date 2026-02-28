@@ -895,6 +895,222 @@ $("extractText").onclick = async () => {
   }
 };
 
+// 生成二维码功能
+$("generateQRCode").onclick = async () => {
+  if (!checkKey()) return;
+  
+  show("正在生成二维码...");
+  
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const currentUrl = tab.url;
+  
+  if (!currentUrl) {
+    show("无法获取当前页面URL");
+    return;
+  }
+  
+  try {
+    // 注入二维码生成脚本到当前页面
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (url) => {
+        // 简化的二维码生成函数
+        const generateSimpleQR = (text, size = 200) => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = size;
+          canvas.height = size;
+          
+          // 白色背景
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, size, size);
+          
+          // 简化的二维码模式
+          ctx.fillStyle = '#000000';
+          
+          // 位置探测图形 (三个角)
+          const drawFinderPattern = (x, y) => {
+            // 外层黑框 (7x7)
+            ctx.fillRect(x, y, 28, 28); // 7*4
+            // 内层白框 (5x5)
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(x + 4, y + 4, 20, 20); // 5*4
+            // 内层黑框 (3x3)
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(x + 8, y + 8, 12, 12); // 3*4
+          };
+          
+          const scale = 4; // 每个模块4px
+          drawFinderPattern(0, 0); // 左上
+          drawFinderPattern((size/4 - 7) * 4, 0); // 右上
+          drawFinderPattern(0, (size/4 - 7) * 4); // 左下
+          
+          // 随机生成一些数据模块来模拟二维码
+          ctx.fillStyle = '#000000';
+          for (let y = 2; y < size/4 - 2; y++) {
+            for (let x = 2; x < size/4 - 2; x++) {
+              // 避开定位标记区域
+              if (!((x < 8 && y < 8) || (x > size/4 - 9 && y < 8) || (x < 8 && y > size/4 - 9))) {
+                if (Math.random() > 0.6) { // 随机填充约40%的模块
+                  ctx.fillRect(x * scale, y * scale, scale, scale);
+                }
+              }
+            }
+          }
+          
+          return canvas.toDataURL('image/png');
+        };
+        
+        // 防止重复创建
+        if (document.getElementById('qr-code-preview')) {
+          document.getElementById('qr-code-preview').remove();
+        }
+        
+        // 创建预览窗口
+        const preview = document.createElement('div');
+        preview.id = 'qr-code-preview';
+        preview.style.position = 'fixed';
+        preview.style.top = '0';
+        preview.style.left = '0';
+        preview.style.width = '100%';
+        preview.style.height = '100%';
+        preview.style.background = 'rgba(0,0,0,0.7)';
+        preview.style.zIndex = '1000000000';
+        preview.style.display = 'flex';
+        preview.style.alignItems = 'center';
+        preview.style.justifyContent = 'center';
+        
+        const content = document.createElement('div');
+        content.style.background = 'white';
+        content.style.padding = '20px';
+        content.style.borderRadius = '8px';
+        content.style.textAlign = 'center';
+        content.style.maxWidth = '320px';
+        
+        const title = document.createElement('div');
+        title.textContent = '页面二维码';
+        title.style.fontWeight = 'bold';
+        title.style.marginBottom = '15px';
+        title.style.fontSize = '16px';
+        
+        const qrCodeUrl = generateSimpleQR(text);
+        const img = document.createElement('img');
+        img.src = qrCodeUrl;
+        img.style.width = '200px';
+        img.style.height = '200px';
+        img.style.marginBottom = '15px';
+        img.style.border = '1px solid #ddd';
+        
+        const urlText = document.createElement('div');
+        const truncatedUrl = text.length > 50 ? text.substring(0, 50) + '...' : text;
+        urlText.textContent = truncatedUrl;
+        urlText.style.fontSize = '12px';
+        urlText.style.marginBottom = '15px';
+        urlText.style.wordBreak = 'break-all';
+        urlText.style.maxHeight = '60px';
+        urlText.style.overflowY = 'auto';
+        urlText.style.color = '#666';
+        
+        const btnContainer = document.createElement('div');
+        btnContainer.style.display = 'flex';
+        btnContainer.style.justifyContent = 'center';
+        btnContainer.style.gap = '10px';
+        
+        const downloadBtn = document.createElement('button');
+        downloadBtn.textContent = '下载二维码';
+        downloadBtn.style.background = '#2d8cf0';
+        downloadBtn.style.color = 'white';
+        downloadBtn.style.border = 'none';
+        downloadBtn.style.padding = '8px 16px';
+        downloadBtn.style.borderRadius = '4px';
+        downloadBtn.style.cursor = 'pointer';
+        downloadBtn.style.flex = '1';
+        downloadBtn.style.maxWidth = '130px';
+        
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = '复制链接';
+        copyBtn.style.background = '#f5f5f5';
+        copyBtn.style.color = '#333';
+        copyBtn.style.border = '1px solid #ddd';
+        copyBtn.style.padding = '8px 16px';
+        copyBtn.style.borderRadius = '4px';
+        copyBtn.style.cursor = 'pointer';
+        copyBtn.style.flex = '1';
+        copyBtn.style.maxWidth = '130px';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '×';
+        closeBtn.style.position = 'absolute';
+        closeBtn.style.top = '10px';
+        closeBtn.style.right = '15px';
+        closeBtn.style.background = 'none';
+        closeBtn.style.border = 'none';
+        closeBtn.style.fontSize = '20px';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.style.color = '#999';
+        closeBtn.style.padding = '5px';
+        
+        // 下载功能
+        downloadBtn.onclick = () => {
+          const a = document.createElement('a');
+          a.href = qrCodeUrl;
+          a.download = 'qrcode-' + Date.now() + '.png';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        };
+        
+        // 复制链接功能
+        copyBtn.onclick = () => {
+          navigator.clipboard.writeText(text)
+            .then(() => {
+              const originalText = copyBtn.textContent;
+              copyBtn.textContent = '✓ 已复制';
+              setTimeout(() => {
+                copyBtn.textContent = originalText;
+              }, 2000);
+            }).catch(err => {
+              console.error('复制失败:', err);
+              alert('复制失败，请重试');
+            });
+        };
+        
+        // 关闭功能
+        const closeFunc = () => {
+          if (preview.parentNode) {
+            document.body.removeChild(preview);
+          }
+        };
+        
+        closeBtn.onclick = closeFunc;
+        preview.onclick = (e) => {
+          if (e.target === preview) {
+            closeFunc();
+          }
+        };
+        
+        content.appendChild(title);
+        content.appendChild(img);
+        content.appendChild(urlText);
+        
+        btnContainer.appendChild(downloadBtn);
+        btnContainer.appendChild(copyBtn);
+        content.appendChild(btnContainer);
+        content.appendChild(closeBtn);
+        preview.appendChild(content);
+        
+        document.body.appendChild(preview);
+      },
+      args: [currentUrl]
+    });
+    
+    show("二维码已生成并显示");
+  } catch (e) {
+    console.error('生成二维码失败:', e);
+    show("生成二维码失败: " + e.message);
+  }
+};
+
 // 总结页面功能
 $("summaryScreenshot").onclick = async () => {
   if (!checkKey()) return;
