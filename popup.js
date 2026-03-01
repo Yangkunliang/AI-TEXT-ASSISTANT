@@ -7,6 +7,60 @@ const config = {
   apiUrl: "https://api.deepseek.com/chat/completions"
 }
 
+// Toast提示函数
+const showToast = (message, duration = 2000) => {
+  // 移除已存在的toast
+  const existingToast = document.getElementById('toast-message');
+  if (existingToast) {
+    existingToast.remove();
+  }
+  
+  // 创建toast元素
+  const toast = document.createElement('div');
+  toast.id = 'toast-message';
+  toast.style.cssText = `
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 24px;
+    font-size: 14px;
+    z-index: 9999999999;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    animation: slideDown 0.3s ease-out, fadeOut 0.3s ease-in ${duration - 300}ms forwards;
+  `;
+  
+  // 添加动画样式
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes slideDown {
+      from { transform: translate(-50%, -20px); opacity: 0; }
+      to { transform: translate(-50%, 0); opacity: 1; }
+    }
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+  `;
+  document.head.appendChild(style);
+  
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  
+  // 自动移除
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.parentNode.removeChild(toast);
+    }
+    if (style.parentNode) {
+      style.parentNode.removeChild(style);
+    }
+  }, duration);
+};
+
 // 加载用户保存的API Key
 let API_KEY = ""
 chrome.storage.sync.get(["apiKey"], (res) => {
@@ -136,6 +190,60 @@ if ($("scrollScreenshot")) {
         func: async () => {
           if (document.getElementById('screenshot-select-overlay')) return;
 
+          // Toast提示函数
+          const showToast = (message, duration = 2000) => {
+            // 移除已存在的toast
+            const existingToast = document.getElementById('toast-message');
+            if (existingToast) {
+              existingToast.remove();
+            }
+            
+            // 创建toast元素
+            const toast = document.createElement('div');
+            toast.id = 'toast-message';
+            toast.style.cssText = `
+              position: fixed;
+              top: 20px;
+              left: 50%;
+              transform: translateX(-50%);
+              background: rgba(0, 0, 0, 0.8);
+              color: white;
+              padding: 12px 24px;
+              border-radius: 24px;
+              font-size: 14px;
+              z-index: 9999999999;
+              box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+              animation: slideDown 0.3s ease-out, fadeOut 0.3s ease-in ${duration - 300}ms forwards;
+            `;
+            
+            // 添加动画样式
+            const style = document.createElement('style');
+            style.textContent = `
+              @keyframes slideDown {
+                from { transform: translate(-50%, -20px); opacity: 0; }
+                to { transform: translate(-50%, 0); opacity: 1; }
+              }
+              @keyframes fadeOut {
+                from { opacity: 1; }
+                to { opacity: 0; }
+              }
+            `;
+            document.head.appendChild(style);
+            
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            // 自动移除
+            setTimeout(() => {
+              if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+              }
+              if (style.parentNode) {
+                style.parentNode.removeChild(style);
+              }
+            }, duration);
+          };
+
           // 创建遮罩
           const overlay = document.createElement('div');
           overlay.id = 'screenshot-select-overlay';
@@ -253,7 +361,7 @@ if ($("scrollScreenshot")) {
             });
 
             if (!dataUrl) {
-              alert('截图失败');
+              showToast('截图失败');
               cleanup();
               return;
             }
@@ -288,10 +396,10 @@ if ($("scrollScreenshot")) {
                 canvas.toBlob(async (blob) => {
                   try {
                     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                    alert('✅ 截图已复制到剪贴板！');
+                    showToast('✅ 截图已复制到剪贴板！');
                   } catch (e) {
                     console.error('复制到剪贴板失败:', e);
-                    alert('截图成功，但复制到剪贴板失败');
+                    showToast('截图成功，但复制到剪贴板失败');
                   } finally {
                     console.log('执行清理操作');
                     cleanup();
@@ -325,6 +433,60 @@ if ($("scrollCapture")) {
       target: { tabId: tab.id },
       func: async () => {
         if (document.getElementById('ss-full-mask')) return;
+
+        // Toast提示函数
+        const showToast = (message, duration = 2000) => {
+          // 移除已存在的toast
+          const existingToast = document.getElementById('toast-message');
+          if (existingToast) {
+            existingToast.remove();
+          }
+          
+          // 创建toast元素
+          const toast = document.createElement('div');
+          toast.id = 'toast-message';
+          toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 24px;
+            font-size: 14px;
+            z-index: 9999999999;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            animation: slideDown 0.3s ease-out, fadeOut 0.3s ease-in ${duration - 300}ms forwards;
+          `;
+          
+          // 添加动画样式
+          const style = document.createElement('style');
+          style.textContent = `
+            @keyframes slideDown {
+              from { transform: translate(-50%, -20px); opacity: 0; }
+              to { transform: translate(-50%, 0); opacity: 1; }
+            }
+            @keyframes fadeOut {
+              from { opacity: 1; }
+              to { opacity: 0; }
+            }
+          `;
+          document.head.appendChild(style);
+          
+          toast.textContent = message;
+          document.body.appendChild(toast);
+          
+          // 自动移除
+          setTimeout(() => {
+            if (toast.parentNode) {
+              toast.parentNode.removeChild(toast);
+            }
+            if (style.parentNode) {
+              style.parentNode.removeChild(style);
+            }
+          }, duration);
+        };
 
         // 1. 建立视口固定遮罩 (Fixed)
         const mask = document.createElement('div');
@@ -538,7 +700,7 @@ if ($("scrollCapture")) {
               const item = new ClipboardItem({ 'image/png': blob });
               await navigator.clipboard.write([item]);
               cleanup();
-              alert("✅ 截图成功！");
+              showToast("✅ 截图已复制到剪贴板！");
             });
           };
           document.getElementById('p-no').onclick = cleanup;
