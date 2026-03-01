@@ -1,6 +1,6 @@
 // 监听来自content script的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'captureTab') {
+  if (message.type === 'captureTab' || message.action === 'captureTab') {
     // 获取当前活动标签页
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs.length > 0) {

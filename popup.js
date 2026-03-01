@@ -129,20 +129,6 @@ if ($("scrollScreenshot")) {
 
     show("点击页面选择截图区域...");
 
-    // 先截图并存储
-    let screenshotDataUrl = null;
-    try {
-      screenshotDataUrl = await new Promise((resolve) => {
-        chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }, resolve);
-      });
-
-      if (screenshotDataUrl) {
-        await new Promise(r => chrome.storage.local.set({ screenshotData: screenshotDataUrl }, r));
-      }
-    } catch (e) {
-      console.error('截图失败:', e);
-    }
-
     // 注入区域选择脚本到页面
     try {
       await chrome.scripting.executeScript({
@@ -150,7 +136,7 @@ if ($("scrollScreenshot")) {
         func: async () => {
           if (document.getElementById('screenshot-select-overlay')) return;
 
-          // --- 1. 完全保留你的定位遮罩逻辑 ---
+          // 创建遮罩
           const overlay = document.createElement('div');
           overlay.id = 'screenshot-select-overlay';
           overlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); z-index: 999999999; cursor: crosshair;`;
@@ -183,101 +169,138 @@ if ($("scrollScreenshot")) {
 
             // 校验选区大小
             if (rect.width < 10 || rect.height < 10) {
-              document.body.removeChild(selectionBox);
-              document.body.removeChild(overlay);
+              try {
+                if (selectionBox && selectionBox.parentNode) {
+                  selectionBox.parentNode.removeChild(selectionBox);
+                }
+                if (overlay && overlay.parentNode) {
+                  overlay.parentNode.removeChild(overlay);
+                }
+              } catch (e) {
+                console.error('清理小选区失败:', e);
+              }
               return;
             }
 
-            // --- 2. 这里的逻辑升级：进入手动拼接预览状态 ---
-            overlay.style.background = "transparent"; // 选完后变透明，不遮挡内容
-            overlay.style.pointerEvents = "none"; // 允许鼠标滚网页内容
+            // 为元素添加唯一ID
+            const panelId = 'screenshot-panel-' + Date.now();
+            const selectionBoxId = 'screenshot-selection-' + Date.now();
+            
+            selectionBox.id = selectionBoxId;
+            // overlay已经有固定ID 'screenshot-select-overlay'
 
-            // 创建预览面板
+            // 创建操作面板
             const panel = document.createElement('div');
-            panel.style.cssText = `position: fixed; right: 20px; top: 20px; width: 180px; height: 500px; background: white; border: 2px solid #2d8cf0; z-index: 1000000001; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; pointer-events: auto;`;
+            panel.id = panelId;
+            panel.style.cssText = `position: fixed; right: 20px; top: 20px; width: 200px; background: white; border: 2px solid #2d8cf0; z-index: 1000000001; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; pointer-events: auto;`;
             panel.innerHTML = `
-            <div style="background:#2d8cf0; color:white; padding:8px; font-size:12px; text-align:center;">手动拼长图</div>
-            <div id="stitch-preview" style="flex:1; overflow-y:auto; background:#eee; padding:5px;"><canvas id="stitch-canvas" style="width:100%;"></canvas></div>
-            <div style="padding:10px; display:flex; flex-direction:column; gap:8px;">
-                <button id="btn-snap" style="padding:8px; background:#2d8cf0; color:white; border:none; cursor:pointer; border-radius:4px; font-weight:bold;">📸 捕获当前帧</button>
-                <div style="display:flex; gap:5px;">
-                   <button id="btn-save" style="flex:1; padding:6px; background:#52c41a; color:white; border:none; cursor:pointer; border-radius:4px;">完成保存</button>
-                   <button id="btn-cancel" style="flex:1; padding:6px; background:#ff4d4f; color:white; border:none; cursor:pointer; border-radius:4px;">取消</button>
-                </div>
-                <p style="font-size:10px; color:#999; margin:0; text-align:center;">滚一下对话，点一下捕获</p>
+            <div style="background:#2d8cf0; color:white; padding:8px; font-size:12px; text-align:center;">截图</div>
+            <div style="padding:15px; display:flex; gap:10px;">
+               <button id="btn-save" style="flex:1; padding:8px; background:#52c41a; color:white; border:none; cursor:pointer; border-radius:4px;">完成</button>
+               <button id="btn-cancel" style="flex:1; padding:8px; background:#ff4d4f; color:white; border:none; cursor:pointer; border-radius:4px;">取消</button>
             </div>`;
             document.body.appendChild(panel);
 
-            const canvas = document.getElementById('stitch-canvas');
+            // 清理函数
+            const cleanup = () => {
+              console.log('执行清理操作');
+              try {
+                // 通过ID查找和移除元素
+                const panelEl = document.getElementById(panelId);
+                if (panelEl && panelEl.parentNode) {
+                  console.log('移除panel');
+                  panelEl.parentNode.removeChild(panelEl);
+                }
+                
+                const selectionBoxEl = document.getElementById(selectionBoxId);
+                if (selectionBoxEl && selectionBoxEl.parentNode) {
+                  console.log('移除selectionBox');
+                  selectionBoxEl.parentNode.removeChild(selectionBoxEl);
+                }
+                
+                const overlayEl = document.getElementById('screenshot-select-overlay');
+                if (overlayEl && overlayEl.parentNode) {
+                  console.log('移除overlay');
+                  overlayEl.parentNode.removeChild(overlayEl);
+                }
+              } catch (e) {
+                console.error('清理元素失败:', e);
+              }
+            };
+
+            // 捕获当前屏幕
+            const hideList = [selectionBox, panel, overlay];
+            hideList.forEach(el => {
+              if (el) el.style.visibility = 'hidden';
+            });
+
+            await new Promise(r => setTimeout(r, 100));
+            let dataUrl = null;
+            try {
+              const res = await chrome.runtime.sendMessage({ action: 'captureTab' });
+              dataUrl = res?.dataUrl;
+              if (!dataUrl) {
+                // 尝试从存储中获取
+                const storageData = await new Promise(r => chrome.storage.local.get(['screenshotData'], r));
+                dataUrl = storageData?.screenshotData;
+              }
+            } catch (e) {
+              console.error('获取截图失败:', e);
+            }
+
+            hideList.forEach(el => {
+              if (el) el.style.visibility = 'visible';
+            });
+
+            if (!dataUrl) {
+              alert('截图失败');
+              cleanup();
+              return;
+            }
+
+            // 裁切截图
+            const img = new Image();
+            img.src = dataUrl;
+            await new Promise(r => img.onload = r);
+
+            const drawScale = img.width / window.innerWidth;
+            const canvas = document.createElement('canvas');
+            canvas.width = rect.width * drawScale;
+            canvas.height = rect.height * drawScale;
             const ctx = canvas.getContext('2d');
-            const mainCanvas = document.createElement('canvas'); // 存储长图的真实画布
-            const mainCtx = mainCanvas.getContext('2d');
+            ctx.drawImage(img, rect.left * drawScale, rect.top * drawScale, rect.width * drawScale, rect.height * drawScale, 0, 0, canvas.width, canvas.height);
 
-            let frames = [];
-            const deviceScale = window.devicePixelRatio || 1;
-
-            const captureFrame = async () => {
-              // 💡 解决闪烁：使用 visibility 瞬间隐藏
-              const hideList = [selectionBox, panel, overlay];
-              hideList.forEach(el => el.style.visibility = 'hidden');
-
-              await new Promise(r => setTimeout(r, 100)); // 给百度一点渲染宽容度
-
-              const res = await chrome.runtime.sendMessage({ action: 'captureTab' }); // 假设 background 已有截图监听
-              // 如果 background 还是把截图存 storage，则：
-              // const result = await new Promise(r => chrome.storage.local.get(['screenshotData'], r));
-              // const dataUrl = result?.screenshotData;
-              const dataUrl = res?.dataUrl || (await new Promise(r => chrome.storage.local.get(['screenshotData'], r))).screenshotData;
-
-              hideList.forEach(el => el.style.visibility = 'visible');
-
-              if (!dataUrl) return;
-
-              const img = new Image();
-              img.src = dataUrl;
-              await new Promise(r => img.onload = r);
-
-              // 你的核心裁切逻辑
-              const drawScale = img.width / window.innerWidth;
-              const frameCanvas = document.createElement('canvas');
-              frameCanvas.width = rect.width * drawScale;
-              frameCanvas.height = rect.height * drawScale;
-              const fCtx = frameCanvas.getContext('2d');
-              fCtx.drawImage(img, rect.left * drawScale, rect.top * drawScale, rect.width * drawScale, rect.height * drawScale, 0, 0, frameCanvas.width, frameCanvas.height);
-
-              frames.push(frameCanvas);
-
-              // 垂直拼接
-              mainCanvas.width = frameCanvas.width;
-              mainCanvas.height = frameCanvas.height * frames.length;
-              frames.forEach((f, i) => {
-                mainCtx.drawImage(f, 0, i * frameCanvas.height);
-              });
-
-              // 更新预览
-              canvas.width = 160;
-              canvas.height = mainCanvas.height * (160 / mainCanvas.width);
-              ctx.drawImage(mainCanvas, 0, 0, canvas.width, canvas.height);
-              document.getElementById('stitch-preview').scrollTop = 99999;
-            };
-
-            // 按钮点击事件
-            document.getElementById('btn-snap').onclick = captureFrame;
-            document.getElementById('btn-cancel').onclick = () => {
-              document.body.removeChild(panel);
-              document.body.removeChild(selectionBox);
-              document.body.removeChild(overlay);
-            };
-            document.getElementById('btn-save').onclick = () => {
-              mainCanvas.toBlob(async (blob) => {
-                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                alert('长截图已拼合并复制！');
-                document.getElementById('btn-cancel').onclick();
-              });
-            };
-
-            // 自动捕获第一帧
-            await captureFrame();
+            // 按钮事件
+            const cancelBtn = document.getElementById('btn-cancel');
+            if (cancelBtn) {
+              cancelBtn.onclick = () => {
+                console.log('取消按钮被点击');
+                cleanup();
+              };
+            } else {
+              console.error('找不到取消按钮');
+            }
+            
+            const saveBtn = document.getElementById('btn-save');
+            if (saveBtn) {
+              saveBtn.onclick = () => {
+                console.log('保存按钮被点击');
+                canvas.toBlob(async (blob) => {
+                  try {
+                    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                    alert('✅ 截图已复制到剪贴板！');
+                  } catch (e) {
+                    console.error('复制到剪贴板失败:', e);
+                    alert('截图成功，但复制到剪贴板失败');
+                  } finally {
+                    console.log('执行清理操作');
+                    cleanup();
+                  }
+                });
+              };
+            } else {
+              console.error('找不到保存按钮');
+            }
           };
 
           document.body.appendChild(overlay);
