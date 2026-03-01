@@ -411,6 +411,11 @@ if ($("scrollCapture")) {
               if (isFirst) {
                 frameCvs.height = rect.h;
                 frameCvs.getContext('2d').drawImage(img, rect.x * state.dpr * scale, rect.y * state.dpr * scale, rect.w * state.dpr * scale, rect.h * state.dpr * scale, 0, 0, rect.w, rect.h);
+              } else if (state.isInnerScrolling) {
+                frameCvs.height = rect.h;
+                frameCvs.getContext('2d').drawImage(img, rect.x * state.dpr * scale, rect.y * state.dpr * scale, rect.w * state.dpr * scale, rect.h * state.dpr * scale, 0, 0, rect.w, rect.h);
+                state.isInnerScrolling = false;
+                state.lastY = curY;
               } else {
                 const deltaY = Math.min(curY - state.lastY, rect.h);
                 if (deltaY <= 2) { state.isCapturing = false; return; }
@@ -439,9 +444,69 @@ if ($("scrollCapture")) {
               if (window.scrollY - state.lastY > 45) doCapture();
             }, 150);
           };
+          
+          // 监听内部滚动元素
+          const scrollableElements = new Set();
+          const observeScrollableElements = () => {
+            console.log('开始检测可滚动元素...');
+            const checkElement = (el) => {
+              if (!el || scrollableElements.has(el)) return;
+              try {
+                const style = window.getComputedStyle(el);
+                if ((style.overflow === 'auto' || style.overflow === 'scroll' || 
+                    style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+                    el.scrollHeight > el.clientHeight) {
+                  scrollableElements.add(el);
+                  el.addEventListener('scroll', onInnerScroll);
+                }
+              } catch (e) {}
+            };
+            
+            // 检测现有元素
+            document.querySelectorAll('*').forEach(checkElement);
+            console.log('检测到的可滚动元素数量:', scrollableElements.size);
+            
+            // 使用 MutationObserver 持续检测新元素
+            const observer = new MutationObserver((mutations) => {
+              mutations.forEach((mutation) => {
+                if (mutation.addedNodes) {
+                  mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType === 1) {
+                      checkElement(node);
+                      node.querySelectorAll && node.querySelectorAll('*').forEach(checkElement);
+                    }
+                  });
+                }
+              });
+            });
+            
+            observer.observe(document.body, { childList: true, subtree: true });
+            state.scrollObserver = observer;
+          };
+          
+          const onInnerScroll = (e) => {
+            console.log('内部元素滚动检测到:', e.target);
+            clearTimeout(state.innerTimer);
+            state.innerTimer = setTimeout(() => {
+              const target = e.target;
+              if (target) {
+                state.lastInnerY = target.scrollTop;
+                state.isInnerScrolling = true;
+              }
+              doCapture();
+            }, 300);
+          };
 
           const cleanup = () => {
             window.removeEventListener('scroll', onScroll);
+            scrollableElements.forEach(el => {
+              el.removeEventListener('scroll', onInnerScroll);
+            });
+            scrollableElements.clear();
+            if (state.scrollObserver) {
+              state.scrollObserver.disconnect();
+              state.scrollObserver = null;
+            }
             [mask, sideView, ctrl, hint, selection].forEach(el => el && el.remove());
           };
 
@@ -456,6 +521,7 @@ if ($("scrollCapture")) {
           document.getElementById('p-no').onclick = cleanup;
 
           window.addEventListener('scroll', onScroll);
+          observeScrollableElements();
           doCapture();
         };
       }
